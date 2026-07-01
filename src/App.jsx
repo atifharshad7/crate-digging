@@ -18,7 +18,7 @@ import { supabase } from "./supabaseClient";
 // map snake_case DB rows -> the camelCase shapes the UI already uses
 const mapShop = (s) => ({ id: s.id, name: s.name, hood: s.hood, address: s.address, lat: s.lat, lng: s.lng, discogs: s.discogs, mapsUrl: s.maps_url, owner_id: s.owner_id });
 const mapRelease = (r) => ({ id: r.id, artist: r.artist, title: r.title, year: r.year, genre: r.genre, format: r.format, cover: r.cover || ["#38271F", "#C4632E"], image: r.image || undefined, youtubeUrl: r.youtube_url || undefined, tracklist: r.tracklist || undefined });
-const mapListing = (l) => ({ id: l.id, shopId: l.shop_id, releaseId: l.release_id, condition: l.condition, price: l.price, qty: l.qty, status: l.status, source: l.source, discount: l.discount || undefined, updated: l.updated_at });
+const mapListing = (l) => ({ id: l.id, shopId: l.shop_id, releaseId: l.release_id, condition: l.condition, price: l.price, qty: l.qty, status: l.status, source: l.source, discount: l.discount || undefined, updated: l.updated_at, created: l.created_at });
 const mapReservation = (r) => ({ id: r.id, listingId: r.listing_id, releaseId: r.release_id, shopId: r.shop_id, buyerId: r.buyer_id, status: r.status, created: r.created_at });
 const mapMessage = (m) => ({ id: m.id, shopId: m.shop_id, buyerId: m.buyer_id, sender: m.sender, senderName: m.sender_name || undefined, body: m.body, created: m.created_at });
 
@@ -613,6 +613,7 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [shopQuery, setShopQuery] = useState("");
   const [stockFilter, setStockFilter] = useState("all");
+  const [stockDate, setStockDate] = useState("all");
   const [stockQuery, setStockQuery] = useState("");
   const [toast, setToast] = useState(null);
 
@@ -934,7 +935,7 @@ export default function App() {
       .modeseg{display:flex;background:var(--panel);border-radius:999px;padding:3px}
       .modeseg button{flex:1;border:none;background:transparent;border-radius:999px;padding:6px 10px;font-size:13px;color:var(--muted);cursor:pointer}
       .modeseg button.on{background:var(--rust);color:var(--cream);font-weight:600}
-      .scroll{overflow-y:auto;flex:1}
+      .scroll{overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch}
       .scroll::-webkit-scrollbar{width:0}
     `}</style>
   );
@@ -1276,7 +1277,7 @@ export default function App() {
           style={{ border: "none", background: "transparent", outline: "none", width: "100%", fontSize: 15, color: "var(--ink)" }} />
       </div>
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 12, overflowX: "auto" }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 10, overflowX: "auto" }}>
         {[["all", "All"], ["available", "Available"], ["pending", "Pending"], ["reserved", "Reserved"], ["sold", "Sold"]].map(([key, label]) => (
           <span key={key} onClick={() => setStockFilter(key)} role="button"
             style={{ fontSize: 12, padding: "6px 12px", borderRadius: 999, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
@@ -1287,10 +1288,39 @@ export default function App() {
         ))}
       </div>
 
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <span className="k" style={{ fontSize: 12 }}>Added</span>
+        <select value={stockDate} onChange={(e) => setStockDate(e.target.value)}
+          style={{ fontSize: 12, background: "var(--card)", color: "var(--ink)", border: "0.5px solid var(--line)", borderRadius: 999, padding: "6px 10px", cursor: "pointer" }}>
+          <option value="all">All time</option>
+          <option value="today">Today</option>
+          <option value="yesterday">Yesterday</option>
+          <option value="week">Past week</option>
+          <option value="month">Past month</option>
+          <option value="older">Older</option>
+        </select>
+      </div>
+
       {(() => {
         const q = stockQuery.trim().toLowerCase();
+        const now = Date.now();
+        const day = 86400000;
+        const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+        const todayMs = startOfToday.getTime();
+        const inDate = (l) => {
+          if (stockDate === "all") return true;
+          const t = l.created ? new Date(l.created).getTime() : 0;
+          if (!t) return stockDate === "older";
+          if (stockDate === "today") return t >= todayMs;
+          if (stockDate === "yesterday") return t >= todayMs - day && t < todayMs;
+          if (stockDate === "week") return t >= now - 7 * day;
+          if (stockDate === "month") return t >= now - 30 * day;
+          if (stockDate === "older") return t < now - 30 * day;
+          return true;
+        };
         const shown = myListings.filter((l) => {
           if (stockFilter !== "all" && l.status !== stockFilter) return false;
+          if (!inDate(l)) return false;
           if (!q) return true;
           const r = relById[l.releaseId];
           return `${r?.artist} ${r?.title}`.toLowerCase().includes(q);
@@ -1497,11 +1527,11 @@ export default function App() {
   const ownerMode = isOwner;
 
   return (
-    <div className="rille" style={{ minHeight: "100dvh", background: "#000000", display: "flex", justifyContent: "center" }}>
+    <div className="rille" style={{ height: "100dvh", background: "#000000", display: "flex", justifyContent: "center", overflow: "hidden" }}>
       {styleTag}
-      <div style={{ width: "100%", maxWidth: 393, background: "var(--cream)", minHeight: "100dvh", display: "flex", flexDirection: "column", position: "relative" }}>
+      <div style={{ width: "100%", maxWidth: 393, background: "var(--cream)", height: "100dvh", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
 
-        <div style={{ padding: "16px 18px 12px", borderBottom: "0.5px solid var(--line)" }}>
+        <div style={{ flexShrink: 0, padding: "16px 18px 12px", paddingTop: "calc(16px + env(safe-area-inset-top))", borderBottom: "0.5px solid var(--line)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Disc size={26} />
@@ -1526,7 +1556,7 @@ export default function App() {
           </div>
         )}
 
-        <div style={{ display: "flex", padding: "10px 8px 14px", background: "var(--panel)", borderTop: "0.5px solid var(--line)" }}>
+        <div style={{ flexShrink: 0, display: "flex", padding: "10px 8px 14px", paddingBottom: "calc(14px + env(safe-area-inset-bottom))", background: "var(--panel)", borderTop: "0.5px solid var(--line)" }}>
           {(ownerMode ? ownerTabs : buyerTabs).map(([key, icon, label]) => {
             const active = ownerMode
               ? oScreen.name === key || (key === "stock" && (oScreen.name === "add" || oScreen.name === "edit")) || (key === "messages" && oScreen.name === "thread")
