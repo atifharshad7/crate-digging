@@ -20,6 +20,7 @@ const mapShop = (s) => ({ id: s.id, name: s.name, hood: s.hood, address: s.addre
 const mapRelease = (r) => ({ id: r.id, artist: r.artist, title: r.title, year: r.year, genre: r.genre, format: r.format, cover: r.cover || ["#38271F", "#C4632E"], image: r.image || undefined, youtubeUrl: r.youtube_url || undefined, tracklist: r.tracklist || undefined });
 const mapListing = (l) => ({ id: l.id, shopId: l.shop_id, releaseId: l.release_id, condition: l.condition, price: l.price, qty: l.qty, status: l.status, source: l.source, discount: l.discount || undefined, updated: l.updated_at });
 const mapReservation = (r) => ({ id: r.id, listingId: r.listing_id, releaseId: r.release_id, shopId: r.shop_id, buyerId: r.buyer_id, status: r.status, created: r.created_at });
+const mapMessage = (m) => ({ id: m.id, shopId: m.shop_id, buyerId: m.buyer_id, sender: m.sender, senderName: m.sender_name || undefined, body: m.body, created: m.created_at });
 
 // minimal CSV parser: expects columns artist, title, price (header optional)
 function parseCSV(text) {
@@ -536,6 +537,40 @@ function EditRecord({ listing, release, onSave, onDelete, onCancel, onSetImage, 
 }
 
 // ---- root ----
+function Thread({ title, subtitle, messages, meSender, onSend, onBack, onRefresh }) {
+  const [draft, setDraft] = useState("");
+  const send = () => { const t = draft.trim(); if (!t) return; setDraft(""); onSend(t); };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div style={{ padding: "8px 16px 10px", display: "flex", alignItems: "center", gap: 10, borderBottom: "0.5px solid var(--line)" }}>
+        <span role="button" onClick={onBack} style={{ fontSize: 22, cursor: "pointer" }}>‹</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div>
+          {subtitle ? <div className="k" style={{ fontSize: 11 }}>{subtitle}</div> : null}
+        </div>
+        <span role="button" onClick={onRefresh} className="k" style={{ cursor: "pointer", fontSize: 18 }} title="Refresh">↻</span>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+        {messages.length === 0 ? (
+          <div className="k" style={{ textAlign: "center", padding: "30px 10px" }}>No messages yet. Start the conversation.</div>
+        ) : messages.map((m) => {
+          const mine = m.sender === meSender;
+          return (
+            <div key={m.id} style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "80%" }}>
+              <div style={{ background: mine ? "var(--rust)" : "var(--card)", color: mine ? "var(--cream)" : "var(--ink)", padding: "8px 12px", borderRadius: 14, fontSize: 14, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{m.body}</div>
+              <div className="k" style={{ fontSize: 10, marginTop: 2, textAlign: mine ? "right" : "left" }}>{mine ? "You" : (m.senderName || (m.sender === "owner" ? "Shop" : "Buyer"))}</div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 8, padding: "10px 12px", borderTop: "0.5px solid var(--line)" }}>
+        <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") send(); }} placeholder="Message…" className="field" style={{ flex: 1 }} />
+        <button className="btn-rust" style={{ width: "auto", padding: "9px 16px" }} onClick={send}>Send</button>
+      </div>
+    </div>
+  );
+}
+
 function ShopEditor({ shop, onSave }) {
   const [name, setName] = useState(shop ? shop.name : "");
   const [hood, setHood] = useState(shop ? shop.hood || "" : "");
@@ -568,14 +603,15 @@ export default function App() {
   const [catalog, setCatalog] = useState({ shops: [], releases: [] });
   const [listings, setListings] = useState([]);
   const [reservations, setReservations] = useState([]);
+  const [messages, setMessages] = useState([]);
 
-  const [mode, setMode] = useState("buyer"); // buyer | owner  (owner can toggle to shop)
   const [currentUser, setCurrentUser] = useState(null);
   const [authTab, setAuthTab] = useState("login");
   const [recentEmails, setRecentEmails] = useState([]);
   const [bScreen, setBScreen] = useState({ name: "search" });
   const [oScreen, setOScreen] = useState({ name: "stock" });
   const [query, setQuery] = useState("");
+  const [shopQuery, setShopQuery] = useState("");
   const [stockFilter, setStockFilter] = useState("all");
   const [stockQuery, setStockQuery] = useState("");
   const [toast, setToast] = useState(null);
@@ -603,7 +639,12 @@ export default function App() {
     if (error) console.error("reservations load:", error.message);
     setReservations((data || []).map(mapReservation));
   };
-  const loadAll = async () => { await Promise.all([loadCatalog(), loadListings(), loadReservations()]); };
+  const loadMessages = async () => {
+    const { data, error } = await supabase.from("messages").select("*");
+    if (error) console.error("messages load:", error.message);
+    setMessages((data || []).map(mapMessage));
+  };
+  const loadAll = async () => { await Promise.all([loadCatalog(), loadListings(), loadReservations(), loadMessages()]); };
 
   const loadProfile = async (userId, email) => {
     const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
@@ -645,7 +686,7 @@ export default function App() {
     const { error } = await supabase.auth.signInWithPassword({ email: (email || "").trim(), password });
     if (error) return /invalid/i.test(error.message) ? "Wrong email or password." : error.message;
     rememberEmail(email);
-    setMode("buyer"); setBScreen({ name: "search" }); setOScreen({ name: "stock" });
+    setBScreen({ name: "search" }); setOScreen({ name: "stock" });
     return null; // profile + data load via onAuthStateChange
   };
 
@@ -675,7 +716,7 @@ export default function App() {
     rememberEmail(em);
     await loadProfile(user.id, em);
     await loadAll();
-    setMode("buyer"); setBScreen({ name: "search" }); setOScreen({ name: "stock" });
+    setBScreen({ name: "search" }); setOScreen({ name: "stock" });
     return null;
   };
 
@@ -692,7 +733,7 @@ export default function App() {
     return null;
   };
 
-  const logout = async () => { await supabase.auth.signOut(); setCurrentUser(null); setMode("buyer"); };
+  const logout = async () => { await supabase.auth.signOut(); setCurrentUser(null); };
 
   // ---- buyer actions ----
   const toggleSave = async (releaseId) => {
@@ -833,6 +874,17 @@ export default function App() {
     await Promise.all([loadListings(), loadReservations()]); flash("Reservation released");
   };
 
+  // ---- messaging ----
+  const sendMessage = async (shopId, buyerId, sender, body) => {
+    const text = (body || "").trim();
+    if (!text) return;
+    const { error } = await supabase.from("messages").insert({
+      shop_id: shopId, buyer_id: buyerId, sender, sender_name: (currentUser && currentUser.name) || null, body: text,
+    });
+    if (error) { flash("Couldn't send"); console.error("send message:", error.message); return; }
+    await loadMessages();
+  };
+
   // ---- derived views ----
   const searchResults = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -932,10 +984,15 @@ export default function App() {
     <div style={{ padding: "6px 18px 20px" }}>
       <div className="row card" style={{ padding: "10px 12px", marginBottom: 14 }}>
         <span style={{ color: "var(--muted)" }}>⌕</span>
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search artist or title"
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search artist or title" autoFocus
           style={{ border: "none", background: "transparent", outline: "none", width: "100%", fontSize: 15, color: "var(--ink)" }} />
       </div>
-      {searchResults.length === 0 ? (
+      {!query.trim() ? (
+        <div style={{ textAlign: "center", padding: "60px 24px", color: "var(--muted)" }}>
+          <Disc size={54} />
+          <div style={{ fontSize: 15, marginTop: 16, lineHeight: 1.5 }}>Let's dig through the crates<br />and find your perfect record.</div>
+        </div>
+      ) : searchResults.length === 0 ? (
         <div className="k" style={{ textAlign: "center", padding: "40px 20px" }}>No records match that. Try another artist or title.</div>
       ) : (
         searchResults.map((x) => <RecordRow key={x.release.id} r={x.release} shops={x.shops} min={x.min} />)
@@ -1051,14 +1108,19 @@ export default function App() {
           held.map((res) => {
             const r = relById[res.releaseId]; const s = shopById[res.shopId];
             return (
-              <div key={res.id} className="row card" style={{ padding: "11px 13px", marginBottom: 8 }}>
-                <Sleeve release={r} size={46} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="serif" style={{ fontSize: 15, fontWeight: 600 }}>{r.title}</div>
-                  <div className="k">{s.name} · {s.hood}</div>
-                  <div className="k" style={{ fontSize: 11, marginTop: 3 }}>{res.status === "pending" ? "waiting for the shop to accept" : "ready to pick up in store"}</div>
+              <div key={res.id} className="card" style={{ padding: "11px 13px", marginBottom: 8 }}>
+                <div className="row">
+                  <Sleeve release={r} size={46} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="serif" style={{ fontSize: 15, fontWeight: 600 }}>{r.title}</div>
+                    <div className="k">{s.name} · {s.hood}</div>
+                    <div className="k" style={{ fontSize: 11, marginTop: 3 }}>{res.status === "pending" ? "waiting for the shop to accept" : "ready to pick up in store"}</div>
+                  </div>
+                  <StatusPill status={res.status === "pending" ? "pending" : "reserved"} />
                 </div>
-                <StatusPill status={res.status === "pending" ? "pending" : "reserved"} />
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: "0.5px solid var(--line)" }}>
+                  <span role="button" onClick={() => setBScreen({ name: "thread", shopId: res.shopId, from: "messages" })} style={{ fontSize: 13, color: "var(--rust)", cursor: "pointer" }}>Message shop ✉</span>
+                </div>
               </div>
             );
           })
@@ -1111,22 +1173,36 @@ export default function App() {
   const ShopScreen = () => {
     const s = shopById[bScreen.shopId];
     if (!s) return null;
-    const recs = listings.filter((l) => l.shopId === s.id && l.status !== "sold");
-    const availCount = recs.filter((l) => l.status === "available").length;
+    const all = listings.filter((l) => l.shopId === s.id && l.status !== "sold");
+    const availCount = all.filter((l) => l.status === "available").length;
+    const q = shopQuery.trim().toLowerCase();
+    const recs = q
+      ? all.filter((l) => { const r = relById[l.releaseId]; return r && ((r.artist || "").toLowerCase().includes(q) || (r.title || "").toLowerCase().includes(q)); })
+      : all;
     return (
       <div className="scroll">
         <div style={{ padding: "8px 16px 0" }}>
-          <span role="button" onClick={() => setBScreen({ name: "stores" })} style={{ fontSize: 22, cursor: "pointer" }}>‹</span>
+          <span role="button" onClick={() => { setShopQuery(""); setBScreen({ name: "stores" }); }} style={{ fontSize: 22, cursor: "pointer" }}>‹</span>
         </div>
         <div style={{ padding: "4px 20px 0" }}>
           <div style={{ fontSize: 24, fontWeight: 600 }}>{s.name}</div>
           <div className="k" style={{ marginTop: 5 }}>{s.hood}{s.address ? " · " + s.address : ""}</div>
           <div className="k" style={{ marginTop: 2 }}>{availCount} record{availCount === 1 ? "" : "s"} available · in-store pickup only</div>
-          <a href={gmapsUrl(s)} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: 10, fontSize: 13, color: "var(--rust)", textDecoration: "none" }}>Open in Google Maps ↗</a>
+          <div style={{ display: "flex", gap: 16, marginTop: 10 }}>
+            <a href={gmapsUrl(s)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "var(--rust)", textDecoration: "none" }}>Open in Google Maps ↗</a>
+            <span role="button" onClick={() => setBScreen({ name: "thread", shopId: s.id, from: "shop" })} style={{ fontSize: 13, color: "var(--rust)", cursor: "pointer" }}>Message shop ✉</span>
+          </div>
         </div>
-        <div style={{ padding: "16px 16px 24px" }}>
+        <div style={{ padding: "14px 16px 0" }}>
+          <div className="row card" style={{ padding: "9px 12px" }}>
+            <span style={{ color: "var(--muted)" }}>⌕</span>
+            <input value={shopQuery} onChange={(e) => setShopQuery(e.target.value)} placeholder="Search this shop"
+              style={{ border: "none", background: "transparent", outline: "none", width: "100%", fontSize: 15, color: "var(--ink)" }} />
+          </div>
+        </div>
+        <div style={{ padding: "14px 16px 24px" }}>
           {recs.length === 0 ? (
-            <div className="k" style={{ textAlign: "center", padding: "34px 20px" }}>This shop hasn't listed any records yet.</div>
+            <div className="k" style={{ textAlign: "center", padding: "34px 20px" }}>{all.length === 0 ? "This shop hasn't listed any records yet." : "No records match that."}</div>
           ) : recs.map((l) => {
             const r = relById[l.releaseId];
             return (
@@ -1319,6 +1395,81 @@ export default function App() {
     </div>
   );
 
+  // ---- messaging screens ----
+  const BuyerMessages = () => {
+    const mine = messages.filter((m) => m.buyerId === (currentUser && currentUser.id));
+    const byShop = {};
+    mine.forEach((m) => { (byShop[m.shopId] = byShop[m.shopId] || []).push(m); });
+    const threads = Object.keys(byShop).map((sid) => {
+      const arr = byShop[sid].slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+      return { shopId: sid, last: arr[arr.length - 1] };
+    }).sort((a, b) => new Date(b.last.created) - new Date(a.last.created));
+    return (
+      <div style={{ padding: "6px 18px 20px" }}>
+        <div style={{ fontSize: 22, fontWeight: 600, margin: "6px 0 14px" }}>Messages</div>
+        {threads.length === 0 ? (
+          <div className="k" style={{ textAlign: "center", padding: "40px 20px" }}>No messages yet. Open a shop and tap “Message shop” to start a conversation.</div>
+        ) : threads.map((t) => {
+          const s = shopById[t.shopId];
+          return (
+            <div key={t.shopId} className="row card" style={{ padding: "12px 13px", marginBottom: 8, cursor: "pointer" }} onClick={() => setBScreen({ name: "thread", shopId: t.shopId, from: "messages" })}>
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, borderRadius: 999, background: "var(--rust)", color: "var(--cream)", flexShrink: 0 }}>✉</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>{s ? s.name : "Shop"}</div>
+                <div className="k" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.last.sender === "buyer" ? "You: " : ""}{t.last.body}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const BuyerThread = () => {
+    const s = shopById[bScreen.shopId];
+    const msgs = messages.filter((m) => m.buyerId === (currentUser && currentUser.id) && m.shopId === bScreen.shopId)
+      .slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+    return <Thread title={s ? s.name : "Shop"} subtitle={s ? s.hood : ""} messages={msgs} meSender="buyer"
+      onBack={() => setBScreen(bScreen.from === "shop" ? { name: "shop", shopId: bScreen.shopId } : { name: "messages" })}
+      onRefresh={loadMessages} onSend={(body) => sendMessage(bScreen.shopId, currentUser.id, "buyer", body)} />;
+  };
+
+  const OwnerMessages = () => {
+    const mine = messages.filter((m) => m.shopId === myShopId);
+    const byBuyer = {};
+    mine.forEach((m) => { (byBuyer[m.buyerId] = byBuyer[m.buyerId] || []).push(m); });
+    const threads = Object.keys(byBuyer).map((bid) => {
+      const arr = byBuyer[bid].slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+      const nameMsg = arr.find((m) => m.sender === "buyer" && m.senderName);
+      return { buyerId: bid, name: nameMsg ? nameMsg.senderName : "Buyer", last: arr[arr.length - 1] };
+    }).sort((a, b) => new Date(b.last.created) - new Date(a.last.created));
+    return (
+      <div style={{ padding: "6px 18px 20px" }}>
+        <div style={{ fontSize: 22, fontWeight: 600, margin: "6px 0 14px" }}>Messages</div>
+        {threads.length === 0 ? (
+          <div className="k" style={{ textAlign: "center", padding: "40px 20px" }}>No messages yet. Buyers can message you from your shop page.</div>
+        ) : threads.map((t) => (
+          <div key={t.buyerId} className="row card" style={{ padding: "12px 13px", marginBottom: 8, cursor: "pointer" }} onClick={() => setOScreen({ name: "thread", buyerId: t.buyerId })}>
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, borderRadius: 999, background: "var(--rust)", color: "var(--cream)", flexShrink: 0 }}>✉</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>{t.name}</div>
+              <div className="k" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.last.sender === "owner" ? "You: " : ""}{t.last.body}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const OwnerThread = () => {
+    const msgs = messages.filter((m) => m.shopId === myShopId && m.buyerId === oScreen.buyerId)
+      .slice().sort((a, b) => new Date(a.created) - new Date(b.created));
+    const nameMsg = msgs.find((m) => m.sender === "buyer" && m.senderName);
+    return <Thread title={nameMsg ? nameMsg.senderName : "Buyer"} messages={msgs} meSender="owner"
+      onBack={() => setOScreen({ name: "messages" })} onRefresh={loadMessages}
+      onSend={(body) => sendMessage(myShopId, oScreen.buyerId, "owner", body)} />;
+  };
+
   // ---- assembly ----
   // Screens are invoked as functions (not <Comp/>) so they inline into this
   // render — that keeps text inputs from losing focus on each keystroke.
@@ -1328,18 +1479,22 @@ export default function App() {
     : bScreen.name === "detail" ? BuyerDetail()
     : bScreen.name === "saved" ? BuyerSaved()
     : bScreen.name === "reserved" ? BuyerReserved()
+    : bScreen.name === "messages" ? BuyerMessages()
+    : bScreen.name === "thread" ? BuyerThread()
     : BuyerSearch();
   const ownerContent =
     oScreen.name === "add" ? <AddRecord releases={catalog.releases} listings={listings} shopId={myShopId} onSave={addRecord} onCancel={() => setOScreen({ name: "stock" })} />
     : oScreen.name === "edit" ? <EditRecord listing={listings.find((l) => l.id === oScreen.listingId)} release={relById[listings.find((l) => l.id === oScreen.listingId)?.releaseId]} onSave={saveEdit} onDelete={deleteListing} onCancel={() => setOScreen({ name: "stock" })} onSetImage={setReleaseImage} onSetTracklist={setReleaseTracklist} onSetPreview={setReleasePreview} />
     : oScreen.name === "reservations" ? OwnerReservations()
+    : oScreen.name === "messages" ? OwnerMessages()
+    : oScreen.name === "thread" ? OwnerThread()
     : oScreen.name === "settings" ? OwnerSettings()
     : OwnerStock();
 
   const pendingCount = isOwner ? reservations.filter((r) => r.shopId === myShopId && r.status === "pending").length : 0;
-  const buyerTabs = [["stores", "⌂", "Stores"], ["search", "⌕", "Search"], ["saved", "♡", "Saved"], ["reserved", "◷", "Reserved"]];
-  const ownerTabs = [["stock", "≣", "Stock"], ["reservations", "◷", "Pickups"], ["settings", "⚙", "Shop"]];
-  const ownerMode = isOwner && mode === "owner";
+  const buyerTabs = [["stores", "⌂", "Stores"], ["search", "⌕", "Search"], ["messages", "✉", "Messages"], ["reserved", "◷", "Reserved"]];
+  const ownerTabs = [["stock", "≣", "Stock"], ["reservations", "◷", "Pickups"], ["messages", "✉", "Messages"], ["settings", "⚙", "Shop"]];
+  const ownerMode = isOwner;
 
   return (
     <div className="rille" style={{ minHeight: "100dvh", background: "#000000", display: "flex", justifyContent: "center" }}>
@@ -1347,22 +1502,20 @@ export default function App() {
       <div style={{ width: "100%", maxWidth: 393, background: "var(--cream)", minHeight: "100dvh", display: "flex", flexDirection: "column", position: "relative" }}>
 
         <div style={{ padding: "16px 18px 12px", borderBottom: "0.5px solid var(--line)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: isOwner ? 12 : 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Disc size={26} />
               <span className="serif" style={{ fontSize: 20, fontWeight: 600, letterSpacing: ".01em" }}>Crate Digging</span>
             </span>
-            <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              {!isOwner && (
+                <span role="button" onClick={() => setBScreen({ name: "saved" })} title="Saved"
+                  style={{ cursor: "pointer", fontSize: 18, color: bScreen.name === "saved" ? "var(--rust)" : "var(--muted)" }}>♡</span>
+              )}
               <span className="k">{currentUser.name.split(" ")[0]}</span>
               <span role="button" onClick={logout} className="k" style={{ cursor: "pointer", color: "var(--rust)" }}>Log out</span>
             </span>
           </div>
-          {isOwner && (
-            <div className="modeseg">
-              <button className={mode === "buyer" ? "on" : ""} onClick={() => setMode("buyer")}>Shopping</button>
-              <button className={mode === "owner" ? "on" : ""} onClick={() => setMode("owner")}>My shop</button>
-            </div>
-          )}
         </div>
 
         <div className="scroll">{ownerMode ? ownerContent : buyerContent}</div>
@@ -1376,8 +1529,8 @@ export default function App() {
         <div style={{ display: "flex", padding: "10px 8px 14px", background: "var(--panel)", borderTop: "0.5px solid var(--line)" }}>
           {(ownerMode ? ownerTabs : buyerTabs).map(([key, icon, label]) => {
             const active = ownerMode
-              ? oScreen.name === key || (key === "stock" && (oScreen.name === "add" || oScreen.name === "edit"))
-              : bScreen.name === key || (key === "search" && bScreen.name === "detail") || (key === "stores" && bScreen.name === "shop");
+              ? oScreen.name === key || (key === "stock" && (oScreen.name === "add" || oScreen.name === "edit")) || (key === "messages" && oScreen.name === "thread")
+              : bScreen.name === key || (key === "search" && bScreen.name === "detail") || (key === "stores" && bScreen.name === "shop") || (key === "messages" && bScreen.name === "thread");
             return (
               <button key={key} className={"tab" + (active ? " active" : "")} onClick={() => (ownerMode ? setOScreen({ name: key }) : setBScreen({ name: key }))}>
                 <span className="tabicon" style={{ position: "relative" }}>
