@@ -54,6 +54,8 @@ function parseCSV(text) {
 // recent emails for the login screen stay on the device (a convenience, not shared data)
 const getRecentEmails = () => { try { return JSON.parse(localStorage.getItem("cd:recent_emails") || "[]"); } catch { return []; } };
 const putRecentEmails = (list) => { try { localStorage.setItem("cd:recent_emails", JSON.stringify(list)); } catch { /* ignore */ } };
+const getMsgSeen = () => { try { return JSON.parse(localStorage.getItem("cd:msg_seen") || "{}"); } catch { return {}; } };
+const putMsgSeen = (map) => { try { localStorage.setItem("cd:msg_seen", JSON.stringify(map)); } catch { /* ignore */ } };
 
 
 const CONDITIONS = ["M", "NM", "VG+", "VG", "G"];
@@ -537,8 +539,21 @@ function EditRecord({ listing, release, onSave, onDelete, onCancel, onSetImage, 
 }
 
 // ---- root ----
-function Thread({ title, subtitle, messages, meSender, onSend, onBack, onRefresh }) {
+function EmptyState({ text, actionLabel, onAction }) {
+  return (
+    <div style={{ textAlign: "center", padding: "48px 24px", color: "var(--muted)" }}>
+      <Disc size={44} />
+      <div style={{ fontSize: 14, margin: "14px 0 18px", lineHeight: 1.5 }}>{text}</div>
+      {actionLabel ? (
+        <button className="btn-rust" style={{ width: "auto", padding: "9px 18px" }} onClick={onAction}>{actionLabel}</button>
+      ) : null}
+    </div>
+  );
+}
+
+function Thread({ title, subtitle, messages, meSender, onSend, onBack, onRefresh, onSeen }) {
   const [draft, setDraft] = useState("");
+  useEffect(() => { if (onSeen) onSeen(); /* mark seen on open + when new msgs load */ }, [messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const send = () => { const t = draft.trim(); if (!t) return; setDraft(""); onSend(t); };
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -608,6 +623,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authTab, setAuthTab] = useState("login");
   const [recentEmails, setRecentEmails] = useState([]);
+  const [msgSeen, setMsgSeen] = useState({});
   const [bScreen, setBScreen] = useState({ name: "search" });
   const [oScreen, setOScreen] = useState({ name: "stock" });
   const [query, setQuery] = useState("");
@@ -662,6 +678,7 @@ export default function App() {
       if (session && session.user) await loadProfile(session.user.id, session.user.email);
       await loadAll();
       setRecentEmails(getRecentEmails());
+      setMsgSeen(getMsgSeen());
       if (mounted) setLoading(false);
     })();
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -876,6 +893,9 @@ export default function App() {
   };
 
   // ---- messaging ----
+  const markThreadSeen = (threadKey) => {
+    setMsgSeen((prev) => { const next = { ...prev, [threadKey]: new Date().toISOString() }; putMsgSeen(next); return next; });
+  };
   const sendMessage = async (shopId, buyerId, sender, body) => {
     const text = (body || "").trim();
     if (!text) return;
@@ -1088,7 +1108,7 @@ export default function App() {
     return (
       <div style={{ padding: "10px 18px 20px" }}>
         {items.length === 0 ? (
-          <div className="k" style={{ textAlign: "center", padding: "40px 20px" }}>Nothing saved yet. Tap the heart on a record to keep it here.</div>
+          <EmptyState text="Nothing saved yet. Tap the heart on a record to keep it here." actionLabel="Browse shops" onAction={() => setBScreen({ name: "stores" })} />
         ) : (
           items.map((r) => {
             const avail = listings.filter((l) => l.releaseId === r.id && l.status === "available");
@@ -1104,7 +1124,7 @@ export default function App() {
     return (
       <div style={{ padding: "10px 18px 20px" }}>
         {held.length === 0 ? (
-          <div className="k" style={{ textAlign: "center", padding: "40px 20px" }}>No reservations yet. Reserve a record and pick it up in store.</div>
+          <EmptyState text="No reservations yet. Find a record and pick it up in store." actionLabel="Find records" onAction={() => setBScreen({ name: "search" })} />
         ) : (
           held.map((res) => {
             const r = relById[res.releaseId]; const s = shopById[res.shopId];
@@ -1147,7 +1167,7 @@ export default function App() {
         <div style={{ fontSize: 22, fontWeight: 600, margin: "6px 0 2px" }}>Stores</div>
         <div className="k" style={{ marginBottom: 14 }}>Record shops selling on Crate Digging</div>
         {shops.length === 0 ? (
-          <div className="k" style={{ textAlign: "center", padding: "40px 20px" }}>No shops are selling yet.</div>
+          <EmptyState text="No shops are selling yet. Be the first to dig — search the crates." actionLabel="Search records" onAction={() => setBScreen({ name: "search" })} />
         ) : shops.map(({ s, n }) => (
           <div key={s.id} className="card" style={{ padding: "12px 13px", marginBottom: 8 }}>
             <div className="row" style={{ cursor: "pointer" }} onClick={() => setBScreen({ name: "shop", shopId: s.id })}>
@@ -1438,7 +1458,7 @@ export default function App() {
       <div style={{ padding: "6px 18px 20px" }}>
         <div style={{ fontSize: 22, fontWeight: 600, margin: "6px 0 14px" }}>Messages</div>
         {threads.length === 0 ? (
-          <div className="k" style={{ textAlign: "center", padding: "40px 20px" }}>No messages yet. Open a shop and tap “Message shop” to start a conversation.</div>
+          <EmptyState text="No messages yet. Open a shop and tap “Message shop” to start a conversation." actionLabel="Browse shops" onAction={() => setBScreen({ name: "stores" })} />
         ) : threads.map((t) => {
           const s = shopById[t.shopId];
           return (
@@ -1461,7 +1481,8 @@ export default function App() {
       .slice().sort((a, b) => new Date(a.created) - new Date(b.created));
     return <Thread title={s ? s.name : "Shop"} subtitle={s ? s.hood : ""} messages={msgs} meSender="buyer"
       onBack={() => setBScreen(bScreen.from === "shop" ? { name: "shop", shopId: bScreen.shopId } : { name: "messages" })}
-      onRefresh={loadMessages} onSend={(body) => sendMessage(bScreen.shopId, currentUser.id, "buyer", body)} />;
+      onRefresh={loadMessages} onSeen={() => markThreadSeen(bScreen.shopId + ":" + currentUser.id)}
+      onSend={(body) => sendMessage(bScreen.shopId, currentUser.id, "buyer", body)} />;
   };
 
   const OwnerMessages = () => {
@@ -1497,6 +1518,7 @@ export default function App() {
     const nameMsg = msgs.find((m) => m.sender === "buyer" && m.senderName);
     return <Thread title={nameMsg ? nameMsg.senderName : "Buyer"} messages={msgs} meSender="owner"
       onBack={() => setOScreen({ name: "messages" })} onRefresh={loadMessages}
+      onSeen={() => markThreadSeen(myShopId + ":" + oScreen.buyerId)}
       onSend={(body) => sendMessage(myShopId, oScreen.buyerId, "owner", body)} />;
   };
 
@@ -1522,6 +1544,16 @@ export default function App() {
     : OwnerStock();
 
   const pendingCount = isOwner ? reservations.filter((r) => r.shopId === myShopId && r.status === "pending").length : 0;
+  const unreadMsgThreads = (() => {
+    const newer = (created, key) => { const seen = msgSeen[key]; return !seen || new Date(created).getTime() > new Date(seen).getTime(); };
+    const set = new Set();
+    if (isOwner) {
+      messages.forEach((m) => { if (m.shopId === myShopId && m.sender === "buyer" && newer(m.created, myShopId + ":" + m.buyerId)) set.add(m.buyerId); });
+    } else if (currentUser) {
+      messages.forEach((m) => { if (m.buyerId === currentUser.id && m.sender === "owner" && newer(m.created, m.shopId + ":" + currentUser.id)) set.add(m.shopId); });
+    }
+    return set.size;
+  })();
   const buyerTabs = [["stores", "⌂", "Stores"], ["search", "⌕", "Search"], ["messages", "✉", "Messages"], ["reserved", "◷", "Reserved"]];
   const ownerTabs = [["stock", "≣", "Stock"], ["reservations", "◷", "Pickups"], ["messages", "✉", "Messages"], ["settings", "⚙", "Shop"]];
   const ownerMode = isOwner;
@@ -1567,6 +1599,9 @@ export default function App() {
                   {icon}
                   {key === "reservations" && pendingCount > 0 && (
                     <span style={{ position: "absolute", top: -4, right: -10, minWidth: 15, height: 15, padding: "0 3px", borderRadius: 999, background: "var(--rust)", color: "var(--cream)", fontSize: 10, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>{pendingCount}</span>
+                  )}
+                  {key === "messages" && unreadMsgThreads > 0 && (
+                    <span style={{ position: "absolute", top: -4, right: -10, minWidth: 15, height: 15, padding: "0 3px", borderRadius: 999, background: "var(--rust)", color: "var(--cream)", fontSize: 10, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>{unreadMsgThreads}</span>
                   )}
                 </span>
                 <span>{label}</span>
