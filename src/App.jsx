@@ -269,14 +269,20 @@ function AuthScreen({ authTab, setAuthTab, recentEmails, onLogin, onRegister, re
   };
 
   return (
-    <div className="rille" style={{ minHeight: "100dvh", background: "#000000", display: "flex", justifyContent: "center" }}>
-      <div style={{ width: "100%", maxWidth: 393, background: "var(--cream)", minHeight: "100dvh", display: "flex", flexDirection: "column", padding: "0 22px" }}>
+    <div className="rille cd-auth" style={{ minHeight: "100dvh", background: "#000000", display: "flex", justifyContent: "center" }}>
+      <div className="cd-auth-hero">
+        <Disc size={96} spin />
+        <div className="serif" style={{ fontSize: 30, fontWeight: 600, marginTop: 18 }}>Crate Digging</div>
+        <div className="k" style={{ marginTop: 10, fontSize: 14, maxWidth: 260, lineHeight: 1.5 }}>Find the record. Go to the shop. Enjoy the dig.</div>
+      </div>
+      <div className="cd-auth-form" style={{ width: "100%", maxWidth: 393, background: "var(--cream)", minHeight: "100dvh", display: "flex", flexDirection: "column", padding: "0 22px" }}>
+        <div className="cd-auth-inner">
         {onBack && (
           <div style={{ paddingTop: 14 }}>
             <span role="button" onClick={onBack} className="k" style={{ cursor: "pointer", fontSize: 14 }}>‹ Back to browsing</span>
           </div>
         )}
-        <div style={{ textAlign: "center", paddingTop: onBack ? 24 : 48 }}>
+        <div className="cd-auth-topbrand" style={{ textAlign: "center", paddingTop: onBack ? 24 : 48 }}>
           <Disc size={72} spin />
           <div className="serif" style={{ fontSize: 26, fontWeight: 600, marginTop: 10 }}>Crate Digging</div>
           <div className="k" style={{ marginTop: 4 }}>Find the record, find the shop.</div>
@@ -346,6 +352,7 @@ function AuthScreen({ authTab, setAuthTab, recentEmails, onLogin, onRegister, re
           <button className="btn-rust" style={{ marginTop: 20, opacity: busy ? 0.6 : 1 }} onClick={submit}>
             {busy ? "Please wait…" : isLogin ? "Log in" : "Create account"}
           </button>
+        </div>
         </div>
       </div>
     </div>
@@ -729,7 +736,7 @@ function Thread({ title, subtitle, messages, meSender, onSend, onBack, onRefresh
   useEffect(() => { if (onSeen) onSeen(); /* mark seen on open + when new msgs load */ }, [messages.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const send = () => { const t = draft.trim(); if (!t) return; setDraft(""); onSend(t); };
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, width: "100%" }}>
       <div style={{ padding: "8px 16px 10px", display: "flex", alignItems: "center", gap: 10, borderBottom: "0.5px solid var(--line)" }}>
         <span role="button" onClick={onBack} style={{ fontSize: 22, cursor: "pointer" }}>‹</span>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -1383,9 +1390,11 @@ export default function App() {
       .scroll{overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch}
       .scroll::-webkit-scrollbar{width:0}
       .cd-sidebar{display:none}
-      .cd-content{width:100%}
+      .cd-auth-hero{display:none}
+      .cd-content{width:100%;min-height:100%;display:flex;flex-direction:column}
       @media (min-width:860px){
-        .cd-shellwrap{max-width:none!important;width:100%!important;flex-direction:row!important}
+        .cd-app{justify-content:flex-start!important}
+        .cd-shellwrap{max-width:none!important;width:100%!important;flex:1 1 auto!important;flex-direction:row!important}
         .cd-topbar{display:none!important}
         .cd-bottombar{display:none!important}
         .cd-sidebar{display:flex;flex-direction:column;width:222px;flex:none;background:var(--panel);border-right:0.5px solid var(--line);padding:18px 12px}
@@ -1401,6 +1410,11 @@ export default function App() {
         .cd-grid>.card{margin-bottom:0!important}
         .cd-gridtiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
         .cd-gridtiles>*{margin-bottom:0!important}
+        .cd-auth{flex-direction:row!important;justify-content:stretch!important}
+        .cd-auth-hero{display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;background:var(--panel);border-right:0.5px solid var(--line);padding:40px;min-height:100dvh;text-align:center}
+        .cd-auth-form{flex:1!important;max-width:none!important;justify-content:center}
+        .cd-auth-inner{max-width:340px;margin:0 auto;width:100%}
+        .cd-auth-topbrand{display:none}
       }
     `}</style>
   );
@@ -2307,7 +2321,7 @@ export default function App() {
   const tabBadge = (key) => (key === "reservations" && pendingCount > 0) ? pendingCount : (key === "messages" && unreadMsgThreads > 0) ? unreadMsgThreads : null;
 
   return (
-    <div className="rille" style={{ height: "100dvh", background: "#000000", display: "flex", justifyContent: "center", overflow: "hidden" }}>
+    <div className="rille cd-app" style={{ height: "100dvh", background: "#000000", display: "flex", justifyContent: "center", overflow: "hidden" }}>
       {styleTag}
       <div className="cd-shellwrap" style={{ width: "100%", maxWidth: 393, background: "var(--cream)", height: "100dvh", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
 
