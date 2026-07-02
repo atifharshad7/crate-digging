@@ -138,6 +138,7 @@ function SourceBadge({ source }) {
 }
 
 const effPrice = (l) => (l.discount && l.discount.pct ? Math.round(l.price * (1 - l.discount.pct / 100)) : l.price);
+const joinDot = (arr) => arr.filter((x) => x !== null && x !== undefined && String(x).trim() !== "").join(" · ");
 
 function PriceTag({ listing, size = 16 }) {
   const has = listing.discount && listing.discount.pct;
@@ -635,11 +636,13 @@ export default function App() {
   const [recentEmails, setRecentEmails] = useState([]);
   const [msgSeen, setMsgSeen] = useState({});
   const [hideGenreNote, setHideGenreNote] = useState(false);
-  const [bScreen, setBScreen] = useState({ name: "search" });
+  const [bScreen, setBScreen] = useState({ name: "stores" });
   const [oScreen, setOScreen] = useState({ name: "stock" });
   const [query, setQuery] = useState("");
   const [browse, setBrowse] = useState(null); // null | {type,value,label}
   const [shopQuery, setShopQuery] = useState("");
+  const [shopGenre, setShopGenre] = useState("all");
+  const [shopSort, setShopSort] = useState("recent");
   const [stockFilter, setStockFilter] = useState("all");
   const [stockDate, setStockDate] = useState("all");
   const [stockQuery, setStockQuery] = useState("");
@@ -738,7 +741,7 @@ export default function App() {
     const { error } = await supabase.auth.signInWithPassword({ email: (email || "").trim(), password });
     if (error) return /invalid/i.test(error.message) ? "Wrong email or password." : error.message;
     rememberEmail(email);
-    setBScreen({ name: "search" }); setOScreen({ name: "stock" });
+    setBScreen({ name: "stores" }); setOScreen({ name: "stock" });
     return null; // profile + data load via onAuthStateChange
   };
 
@@ -768,7 +771,7 @@ export default function App() {
     rememberEmail(em);
     await loadProfile(user.id, em);
     await loadAll();
-    setBScreen({ name: "search" }); setOScreen({ name: "stock" });
+    setBScreen({ name: "stores" }); setOScreen({ name: "stock" });
     return null;
   };
 
@@ -785,7 +788,7 @@ export default function App() {
     return null;
   };
 
-  const logout = async () => { await supabase.auth.signOut(); setCurrentUser(null); };
+  const logout = async () => { await supabase.auth.signOut(); setCurrentUser(null); setBScreen({ name: "stores" }); };
 
   // ---- buyer actions ----
   const toggleSave = async (releaseId) => {
@@ -1028,7 +1031,7 @@ export default function App() {
       <Sleeve release={r} size={52} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="serif" style={{ fontSize: 16, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.title}</div>
-        <div className="k">{r.artist} · {r.year}</div>
+        <div className="k">{joinDot([r.artist, r.year])}</div>
         <div className="k" style={{ marginTop: 3 }}>{shops} shop{shops > 1 ? "s" : ""} · in-store only</div>
       </div>
       <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -1067,10 +1070,6 @@ export default function App() {
     if (has((l) => l.created && new Date(l.created).getTime() >= cut)) tiles.push({ type: "new", label: "New arrivals", c1: "#1B2A4A", c2: "#5FA0B4" });
     if (has((l) => l.discount && l.discount.pct > 0)) tiles.push({ type: "sale", label: "On sale", c1: "#3A1F2B", c2: "#E0673C" });
     if (has((l) => effPrice(l) < 20)) tiles.push({ type: "cheap", label: "Under €20", c1: "#243027", c2: "#B4C47F" });
-    // neighborhoods with stock
-    const hoods = [];
-    avail.forEach((l) => { const s = shopById[l.shopId]; if (s && s.hood && !hoods.includes(s.hood)) hoods.push(s.hood); });
-    hoods.sort().forEach((h, i) => tiles.push({ type: "hood", value: h, label: h, c1: ["#22282E", "#2A1B3A", "#33241A", "#1F2E2A", "#20303A"][i % 5], c2: "#7FB2C4" }));
     // genres present
     const genres = [];
     avail.forEach((l) => { const r = relById[l.releaseId]; const g = r && (r.genre || "").trim(); if (g && !genres.some((x) => x.toLowerCase() === g.toLowerCase())) genres.push(g); });
@@ -1140,7 +1139,7 @@ export default function App() {
     return (
       <div className="scroll">
         <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 16px 0" }}>
-          <span role="button" onClick={() => setBScreen({ name: "search" })} style={{ fontSize: 22, cursor: "pointer" }}>‹</span>
+          <span role="button" onClick={() => setBScreen(bScreen.from === "shop" ? { name: "shop", shopId: bScreen.shopId } : { name: "search" })} style={{ fontSize: 22, cursor: "pointer" }}>‹</span>
           <span role="button" onClick={() => requireAuth("to save records", () => toggleSave(r.id))} style={{ fontSize: 20, cursor: "pointer", color: isSaved ? "var(--rust)" : "var(--faint)" }}>{isSaved ? "♥" : "♡"}</span>
         </div>
         <div style={{ position: "relative", height: 170, margin: "4px 18px 0" }}>
@@ -1150,7 +1149,7 @@ export default function App() {
         <div style={{ padding: "6px 20px 0" }}>
           <div style={{ fontSize: 12, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--muted)" }}>{r.artist}</div>
           <div className="serif" style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.2, marginTop: 2 }}>{r.title}</div>
-          <div className="k" style={{ marginTop: 4 }}>{r.year} · {r.format} · {r.genre}</div>
+          <div className="k" style={{ marginTop: 4 }}>{joinDot([r.year, r.format, r.genre])}</div>
         </div>
         <a href={r.youtubeUrl || ytLink(r)} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>
           <div className="row card" style={{ margin: "12px 16px 0", padding: "10px 12px" }}>
@@ -1187,9 +1186,9 @@ export default function App() {
             const s = shopById[l.shopId];
             return (
               <div key={l.id} className="row card" style={{ padding: "11px 13px", marginBottom: 8, alignItems: "flex-start" }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{s.name}</div>
-                  <div className="k">{s.hood} · {s.address}</div>
+                <div role="button" onClick={() => setBScreen({ name: "shop", shopId: l.shopId })} style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--rust)" }}>{s.name} ›</div>
+                  <div className="k">{joinDot([s.hood, s.address])}</div>
                   <div style={{ marginTop: 6, display: "flex", gap: 6, alignItems: "center" }}>
                     <span className="k" style={{ fontSize: 11, background: "#1E1E1E", color: "#9A9A9A", padding: "2px 7px", borderRadius: 999 }}>{l.condition}</span>
                     <span style={{ fontSize: 11, color: "#E0955F", background: "#2A1D14", padding: "2px 8px", borderRadius: 999 }}>In-store only</span>
@@ -1315,13 +1314,29 @@ export default function App() {
     const all = listings.filter((l) => l.shopId === s.id && l.status !== "sold");
     const availCount = all.filter((l) => l.status === "available").length;
     const q = shopQuery.trim().toLowerCase();
-    const recs = q
-      ? all.filter((l) => { const r = relById[l.releaseId]; return r && ((r.artist || "").toLowerCase().includes(q) || (r.title || "").toLowerCase().includes(q)); })
-      : all;
+
+    // genres actually present in this shop's stock (data-driven dropdown)
+    const shopGenres = [];
+    all.forEach((l) => { const r = relById[l.releaseId]; const g = r && (r.genre || "").trim(); if (g && !shopGenres.some((x) => x.toLowerCase() === g.toLowerCase())) shopGenres.push(g); });
+    shopGenres.sort();
+    const genreActive = shopGenre !== "all" && shopGenres.some((g) => g.toLowerCase() === shopGenre); // ignore stale filter from another shop
+
+    let recs = all.filter((l) => {
+      if (q) { const r = relById[l.releaseId]; if (!r || !((r.artist || "").toLowerCase().includes(q) || (r.title || "").toLowerCase().includes(q))) return false; }
+      if (genreActive) { const r = relById[l.releaseId]; if (!r || (r.genre || "").toLowerCase() !== shopGenre) return false; }
+      return true;
+    });
+    recs = recs.slice().sort((a, b) => {
+      if (shopSort === "price-asc") return effPrice(a) - effPrice(b);
+      if (shopSort === "price-desc") return effPrice(b) - effPrice(a);
+      return new Date(b.created || 0) - new Date(a.created || 0); // recent
+    });
+
+    const selStyle = { fontSize: 12, background: "var(--card)", color: "var(--ink)", border: "0.5px solid var(--line)", borderRadius: 999, padding: "7px 10px", cursor: "pointer" };
     return (
       <div className="scroll">
         <div style={{ padding: "8px 16px 0" }}>
-          <span role="button" onClick={() => { setShopQuery(""); setBScreen({ name: "stores" }); }} style={{ fontSize: 22, cursor: "pointer" }}>‹</span>
+          <span role="button" onClick={() => { setShopQuery(""); setShopGenre("all"); setBScreen({ name: "stores" }); }} style={{ fontSize: 22, cursor: "pointer" }}>‹</span>
         </div>
         <div style={{ padding: "4px 20px 0" }}>
           <div style={{ fontSize: 24, fontWeight: 600 }}>{s.name}</div>
@@ -1338,6 +1353,19 @@ export default function App() {
             <input value={shopQuery} onChange={(e) => setShopQuery(e.target.value)} placeholder="Search this shop"
               style={{ border: "none", background: "transparent", outline: "none", width: "100%", fontSize: 15, color: "var(--ink)" }} />
           </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            {shopGenres.length > 0 && (
+              <select value={genreActive ? shopGenre : "all"} onChange={(e) => setShopGenre(e.target.value)} style={selStyle}>
+                <option value="all">All genres</option>
+                {shopGenres.map((g) => <option key={g} value={g.toLowerCase()}>{g}</option>)}
+              </select>
+            )}
+            <select value={shopSort} onChange={(e) => setShopSort(e.target.value)} style={selStyle}>
+              <option value="recent">Recently added</option>
+              <option value="price-asc">Price: low → high</option>
+              <option value="price-desc">Price: high → low</option>
+            </select>
+          </div>
         </div>
         <div style={{ padding: "14px 16px 24px" }}>
           {recs.length === 0 ? (
@@ -1346,11 +1374,14 @@ export default function App() {
             const r = relById[l.releaseId];
             return (
               <div key={l.id} className="row card" style={{ padding: "10px 12px", marginBottom: 8, alignItems: "flex-start" }}>
-                <Sleeve release={r} size={48} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.title}</div>
-                  <div className="k">{r.artist} · {r.year} · {l.condition}</div>
-                  {l.discount ? <div style={{ marginTop: 5 }}><DiscountBadge listing={l} /></div> : null}
+                <div role="button" onClick={() => setBScreen({ name: "detail", releaseId: l.releaseId, from: "shop", shopId: s.id })}
+                  style={{ display: "flex", gap: 11, flex: 1, minWidth: 0, cursor: "pointer", alignItems: "flex-start" }}>
+                  <Sleeve release={r} size={48} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.title}</div>
+                    <div className="k">{joinDot([r.artist, r.year, l.condition])}</div>
+                    {l.discount ? <div style={{ marginTop: 5 }}><DiscountBadge listing={l} /></div> : null}
+                  </div>
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
                   <PriceTag listing={l} size={15} />
