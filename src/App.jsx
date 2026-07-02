@@ -243,7 +243,7 @@ function distanceKm(a, b) {
 }
 
 // ---- auth screen (login / register) ----
-function AuthScreen({ authTab, setAuthTab, recentEmails, onLogin, onRegister, reason, onBack, initialRole }) {
+function AuthScreen({ authTab, setAuthTab, recentEmails, onLogin, onRegister, reason, onBack, initialRole, onAbout }) {
   const [email, setEmail] = useState((recentEmails && recentEmails[0]) || "");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -352,6 +352,12 @@ function AuthScreen({ authTab, setAuthTab, recentEmails, onLogin, onRegister, re
           <button className="btn-rust" style={{ marginTop: 20, opacity: busy ? 0.6 : 1 }} onClick={submit}>
             {busy ? "Please wait…" : isLogin ? "Log in" : "Create account"}
           </button>
+
+          {onAbout && (
+            <div style={{ textAlign: "center", marginTop: 56, paddingBottom: 24 }}>
+              <span role="button" onClick={onAbout} className="k" style={{ cursor: "pointer", fontSize: 13 }}>About Crate Digging ›</span>
+            </div>
+          )}
         </div>
         </div>
       </div>
@@ -1402,7 +1408,7 @@ export default function App() {
         .cd-sidebar .cd-navitem{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:8px;color:var(--muted);font-size:14px;margin-bottom:3px;cursor:pointer;background:none;border:none;width:100%;text-align:left;position:relative}
         .cd-sidebar .cd-navitem.active{background:#20130C;color:var(--rust)}
         .cd-sidebar .cd-navicon{font-size:18px;line-height:1;width:20px;text-align:center}
-        .cd-sidebar .cd-navbadge{position:absolute;left:26px;top:6px;min-width:15px;height:15px;padding:0 3px;border-radius:999px;background:var(--rust);color:var(--cream);font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center}
+        .cd-sidebar .cd-navbadge{margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--rust);color:var(--cream);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
         .cd-sidebar .cd-navfoot{margin-top:auto;padding:10px 12px;border-top:0.5px solid var(--line);color:var(--muted);font-size:13px;cursor:pointer}
         .cd-main{flex:1;min-width:0;display:flex;flex-direction:column;height:100dvh}
         .cd-content{max-width:none;margin:0;padding:8px 26px 40px}
@@ -1437,6 +1443,7 @@ export default function App() {
         {styleTag}
         <AuthScreen authTab={authTab} setAuthTab={setAuthTab} recentEmails={recentEmails} onLogin={login} onRegister={register}
           reason={authReason} initialRole={authInitialRole}
+          onAbout={() => { setShowAuth(false); setBScreen({ name: "about", from: "auth" }); }}
           onBack={() => { setShowAuth(false); setAuthReason(null); setPendingAction(null); }} />
       </>
     );
@@ -2244,7 +2251,7 @@ export default function App() {
       ))
     : bScreen.name === "messages" ? (isGuest ? GateScreen("Sign in to message shops directly.", "to message shops") : BuyerMessages())
     : bScreen.name === "thread" ? (isGuest ? GateScreen("Sign in to message shops directly.", "to message shops") : BuyerThread())
-    : bScreen.name === "about" ? AboutScreen(() => setBScreen({ name: "profile" }))
+    : bScreen.name === "about" ? AboutScreen(() => bScreen.from === "auth" ? openAuth("login", "buyer", null) : setBScreen({ name: "profile" }))
     : BuyerSearch();
   const OwnerWanted = () => {
     const counts = {};
@@ -2337,8 +2344,9 @@ export default function App() {
               const badge = tabBadge(key);
               return (
                 <button key={key} className={"cd-navitem" + (navActive(key) ? " active" : "")} onClick={() => goTab(key)}>
-                  <span className="cd-navicon" style={{ position: "relative" }}>{icon}{badge != null && <span className="cd-navbadge">{badge}</span>}</span>
+                  <span className="cd-navicon">{icon}</span>
                   {label}
+                  {badge != null && <span className="cd-navbadge">{badge}</span>}
                 </button>
               );
             })
