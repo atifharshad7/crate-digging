@@ -136,19 +136,24 @@ const VINYL_COLORS = [
 ];
 const DEFAULT_VINYL = "#E0673C";
 
-// map a (possibly fine-grained) genre to a browse-tile motion class
+// map a (possibly fine-grained) genre to a browse-tile motion class.
+// Anything not matched here falls back to a normal spin.
 function genreMotionClass(genre) {
   const g = (genre || "").toLowerCase();
-  if (g.includes("schranz")) return "gm-shakehard";
-  if (g.includes("hardcore") || g.includes("gabber") || g.includes("hard techno")) return "gm-shakehard";
-  if (g.includes("techno")) return "gm-shake";
-  if (g.includes("drum") || g.includes("dnb") || g.includes("jungle")) return "gm-shake";
+  if (g.includes("schranz") || g.includes("gabber") || g.includes("hardcore") || g.includes("hard techno") || g.includes("hardstyle")) return "gm-shakehard";
+  if (g.includes("techno") || g.includes("industrial") || g.includes("ebm")) return "gm-shake";
+  if (g.includes("drum") || g.includes("dnb") || g.includes("jungle") || g.includes("break")) return "gm-jolt";
   if (g.includes("afro")) return "gm-afro";
-  if (g.includes("house")) return "gm-house";
-  if (g.includes("prog") || g.includes("trance")) return "gm-prog";
-  if (g.includes("ambient") || g.includes("drone")) return "gm-ambient";
-  if (g.includes("hip") || g.includes("rap") || g.includes("trap")) return "gm-pulse";
-  if (g.includes("jazz") || g.includes("soul") || g.includes("funk") || g.includes("blues")) return "gm-sway";
+  if (g.includes("house") || g.includes("disco") || g.includes("garage")) return "gm-house";
+  if (g.includes("trance") || g.includes("prog")) return "gm-prog";
+  if (g.includes("ambient") || g.includes("drone") || g.includes("downtempo") || g.includes("chill")) return "gm-drift";
+  if (g.includes("dub") || g.includes("reggae") || g.includes("dancehall") || g.includes("ska")) return "gm-wobble";
+  if (g.includes("jazz") || g.includes("blues")) return "gm-sway";
+  if (g.includes("funk") || g.includes("soul") || g.includes("r&b") || g.includes("rnb") || g.includes("motown")) return "gm-groove";
+  if (g.includes("rap") || g.includes("trap")) return "gm-nod";
+  if (g.includes("hip")) return "gm-pulse";
+  if (g.includes("rock") || g.includes("metal") || g.includes("punk") || g.includes("grunge") || g.includes("indie")) return "gm-bob";
+  if (g.includes("pop")) return "gm-bounce";
   return "gm-spin";
 }
 
@@ -162,6 +167,7 @@ function GenreDisc({ genre, ring = "#E0673C", size = 44 }) {
       <circle cx="50" cy="50" r="22" fill="none" stroke="#3A3A3A" strokeWidth="0.7" />
       <circle cx="50" cy="50" r="13" fill="none" stroke={ring} strokeWidth="3" />
       <circle cx="50" cy="50" r="3" fill="#0F0F0F" />
+      <circle cx="41" cy="41" r="1.4" fill="#0F0F0F" opacity="0.6" />
     </svg>
   );
 }
@@ -1230,22 +1236,36 @@ export default function App() {
       @keyframes spin{to{transform:rotate(360deg)}}
       @keyframes armswing{0%{transform:rotate(-3deg)}100%{transform:rotate(6deg)}}
       .tonearm-play{animation:armswing 20s ease-in-out infinite alternate}
-      @keyframes gm_spin{to{transform:rotate(360deg)}}
+      @keyframes gm_spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
       @keyframes gm_shake{0%,100%{transform:translate(0,0) rotate(0)}25%{transform:translate(-1px,.8px) rotate(-3deg)}50%{transform:translate(1px,-.8px) rotate(3deg)}75%{transform:translate(-.8px,-.8px) rotate(-2deg)}}
       @keyframes gm_shakehard{0%,100%{transform:translate(0,0) rotate(0)}20%{transform:translate(-2px,1.6px) rotate(-6deg)}40%{transform:translate(2px,-1.6px) rotate(6deg)}60%{transform:translate(-1.6px,-1.4px) rotate(-5deg)}80%{transform:translate(1.6px,1.4px) rotate(5deg)}}
+      @keyframes gm_jolt{0%,100%{transform:translateX(0)}25%{transform:translateX(-2.5px)}50%{transform:translateX(2.5px)}75%{transform:translateX(-1.5px)}}
+      @keyframes gm_jitter{0%{transform:translate(0,0) rotate(0)}15%{transform:translate(2px,-1.5px) rotate(5deg)}30%{transform:translate(-2px,1px) rotate(-6deg)}45%{transform:translate(1.5px,2px) rotate(3deg)}60%{transform:translate(-1.5px,-2px) rotate(-4deg)}75%{transform:translate(2px,1px) rotate(6deg)}90%{transform:translate(-1px,-1px) rotate(-3deg)}100%{transform:translate(0,0) rotate(0)}}
+      @keyframes gm_swing{0%,100%{transform:rotate(-7deg) translateY(0)}50%{transform:rotate(7deg) translateY(-2px)}}
       @keyframes gm_sway{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(6deg)}}
-      @keyframes gm_pulse{0%,100%{transform:scale(1)}50%{transform:scale(.88)}}
+      @keyframes gm_wobble{0%,100%{transform:rotate(-10deg) translateY(0)}50%{transform:rotate(10deg) translateY(-1.5px)}}
+      @keyframes gm_groove{0%,100%{transform:rotate(-3deg) scale(1)}50%{transform:rotate(3deg) scale(1.03)}}
+      @keyframes gm_pulse{0%,100%{transform:scale(1)}50%{transform:scale(.86)}}
       @keyframes gm_afro{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-2px) rotate(4deg)}}
-      .gm-spin{animation:gm_spin 4.5s linear infinite}
-      .gm-house{animation:gm_spin 2.2s linear infinite}
-      .gm-prog{animation:gm_spin 4s cubic-bezier(.4,0,.6,1) infinite}
-      .gm-ambient{animation:gm_spin 9s linear infinite}
+      @keyframes gm_bob{0%,100%{transform:translateY(-2.5px)}50%{transform:translateY(2.5px)}}
+      @keyframes gm_bounce{0%,100%{transform:scale(1) translateY(1px)}50%{transform:scale(1.08) translateY(-2px)}}
+      @keyframes gm_nod{0%,100%{transform:translateY(0) rotate(0)}25%{transform:translateY(-2px) rotate(-5deg)}50%{transform:translateY(0) rotate(0)}75%{transform:translateY(-2px) rotate(5deg)}}
+      .gm-spin{}
+      .gm-house{animation:gm_swing .9s ease-in-out infinite}
+      .gm-prog{animation:gm_jitter .8s steps(3,end) infinite}
+      .gm-drift{animation:gm_spin 9s linear infinite}
       .gm-shake{animation:gm_shake .3s linear infinite}
       .gm-shakehard{animation:gm_shakehard .2s linear infinite}
+      .gm-jolt{animation:gm_jolt .25s linear infinite}
       .gm-sway{animation:gm_sway 2.6s ease-in-out infinite}
+      .gm-wobble{animation:gm_wobble 1.5s ease-in-out infinite}
+      .gm-groove{animation:gm_groove 1.6s ease-in-out infinite}
       .gm-pulse{animation:gm_pulse 1.15s ease-in-out infinite}
       .gm-afro{animation:gm_afro 1s ease-in-out infinite}
-      @media (prefers-reduced-motion:reduce){.spin{animation:none}.tonearm-play{animation:none}.gm-spin,.gm-house,.gm-prog,.gm-ambient,.gm-shake,.gm-shakehard,.gm-sway,.gm-pulse,.gm-afro{animation:none}}
+      .gm-bob{animation:gm_bob .5s ease-in-out infinite}
+      .gm-bounce{animation:gm_bounce .7s ease-in-out infinite}
+      .gm-nod{animation:gm_nod .9s ease-in-out infinite}
+      @media (prefers-reduced-motion:reduce){.spin,.tonearm-play,[class^="gm-"]{animation:none}}
       .modeseg{display:flex;background:var(--panel);border-radius:999px;padding:3px}
       .modeseg button{flex:1;border:none;background:transparent;border-radius:999px;padding:6px 10px;font-size:13px;color:var(--muted);cursor:pointer}
       .modeseg button.on{background:var(--rust);color:var(--cream);font-weight:600}
