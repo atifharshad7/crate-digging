@@ -1058,8 +1058,9 @@ export default function App() {
   const acceptReservation = async (res) => {
     const hrs = (myShop && myShop.holdHours) || 48;
     const holdUntil = new Date(Date.now() + hrs * 3600000).toISOString();
+    const { error } = await supabase.from("reservations").update({ status: "held", hold_until: holdUntil }).eq("id", res.id);
+    if (error) { flash("Couldn't accept — try again"); console.error("accept:", error.message); return; }
     await supabase.from("listings").update({ status: "reserved", updated_at: new Date().toISOString() }).eq("id", res.listingId);
-    await supabase.from("reservations").update({ status: "held", hold_until: holdUntil }).eq("id", res.id);
     await Promise.all([loadListings(), loadReservations()]); flash("Reservation accepted");
   };
   const declineReservation = async (res) => {
