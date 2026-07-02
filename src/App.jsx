@@ -459,6 +459,48 @@ function AddRecord({ releases, listings, shopId, onSave, onCancel }) {
   );
 }
 
+function NameEditor({ initial, onSave }) {
+  const [nm, setNm] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const dirty = nm.trim() && nm.trim() !== initial;
+  const save = async () => { setBusy(true); await onSave(nm); setBusy(false); };
+  return (
+    <>
+      <div className="k" style={{ marginBottom: 6 }}>Your name</div>
+      <input className="field" value={nm} onChange={(e) => setNm(e.target.value)} style={{ marginBottom: 10 }} />
+      <button className="btn-rust" onClick={save} disabled={busy || !dirty} style={{ opacity: (busy || !dirty) ? 0.5 : 1, marginBottom: 14 }}>Save name</button>
+    </>
+  );
+}
+
+function ProfileScreen({ user, savedCount, reservedCount, onSaveName, onLogout, onBack, onOpenSaved, onOpenReserved }) {
+  return (
+    <div className="scroll" style={{ padding: "10px 18px 24px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0 14px" }}>
+        <span role="button" onClick={onBack} style={{ fontSize: 22, cursor: "pointer" }}>‹</span>
+        <span style={{ fontSize: 15, fontWeight: 600 }}>Profile</span>
+        <span style={{ width: 22 }} />
+      </div>
+      <div className="card" style={{ padding: "12px 14px", marginBottom: 14 }}>
+        <div className="k">Signed in as</div>
+        <div className="k" style={{ marginTop: 2 }}>{user.email}</div>
+      </div>
+      <NameEditor initial={user.name} onSave={onSaveName} />
+      <div style={{ display: "flex", gap: 12, margin: "4px 0 18px" }}>
+        <div className="card" role="button" style={{ flex: 1, padding: "14px", textAlign: "center", cursor: "pointer" }} onClick={onOpenSaved}>
+          <div style={{ fontSize: 22, fontWeight: 600 }}>{savedCount}</div>
+          <div className="k" style={{ marginTop: 2 }}>Saved</div>
+        </div>
+        <div className="card" role="button" style={{ flex: 1, padding: "14px", textAlign: "center", cursor: "pointer" }} onClick={onOpenReserved}>
+          <div style={{ fontSize: 22, fontWeight: 600 }}>{reservedCount}</div>
+          <div className="k" style={{ marginTop: 2 }}>Reserved</div>
+        </div>
+      </div>
+      <button className="btn-ghost" style={{ width: "100%" }} onClick={onLogout}>Log out</button>
+    </div>
+  );
+}
+
 function EditRecord({ listing, release, onSave, onDelete, onCancel, onSetImage, onSetTracklist, onSetPreview }) {
   const [cond, setCond] = useState(listing.condition);
   const [price, setPrice] = useState(String(listing.price));
@@ -861,6 +903,15 @@ export default function App() {
     return null;
   };
 
+  const updateName = async (name) => {
+    const n = (name || "").trim();
+    if (!n) { flash("Name can't be empty."); return; }
+    const { error } = await supabase.from("profiles").update({ name: n }).eq("id", currentUser.id);
+    if (error) { flash("Couldn't update name"); console.error(error.message); return; }
+    setCurrentUser({ ...currentUser, name: n });
+    flash("Name updated");
+  };
+
   const logout = async () => { await supabase.auth.signOut(); setCurrentUser(null); setBScreen({ name: "stores" }); };
 
   // ---- buyer actions ----
@@ -1126,7 +1177,7 @@ export default function App() {
   // ---- buyer screens ----
   const RecordRow = ({ r, shops, min }) => (
     <div className="row card" style={{ padding: "10px 12px", marginBottom: 8, cursor: "pointer" }} onClick={() => setBScreen({ name: "detail", releaseId: r.id })}>
-      <Sleeve release={r} size={52} />
+      <Sleeve release={r} size={46} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="serif" style={{ fontSize: 16, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.title}</div>
         <div className="k">{joinDot([r.artist, r.year])}</div>
@@ -1283,23 +1334,23 @@ export default function App() {
           {rows.map((l) => {
             const s = shopById[l.shopId];
             return (
-              <div key={l.id} className="row card" style={{ padding: "11px 13px", marginBottom: 8, alignItems: "flex-start" }}>
-                <div role="button" onClick={() => setBScreen({ name: "shop", shopId: l.shopId })} style={{ flex: 1, minWidth: 0, cursor: "pointer" }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--rust)" }}>{s.name} ›</div>
-                  <div className="k">{joinDot([s.hood, s.address])}</div>
-                  <div style={{ marginTop: 6, display: "flex", gap: 6, alignItems: "center" }}>
-                    <span className="k" style={{ fontSize: 11, background: "#1E1E1E", color: "#9A9A9A", padding: "2px 7px", borderRadius: 999 }}>{l.condition}</span>
+              <div key={l.id} className="card" style={{ padding: "12px 13px", marginBottom: 8, display: "flex", gap: 12, alignItems: "flex-start" }}>
+                <div role="button" onClick={() => setBScreen({ name: "shop", shopId: l.shopId })} style={{ flex: 1, minWidth: 0, cursor: "pointer", textAlign: "left" }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--rust)" }}>{s.name} ›</div>
+                  <div className="k" style={{ marginTop: 2 }}>{joinDot([s.hood, s.address])}</div>
+                  <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                    <span className="k" style={{ fontSize: 11, background: "#1E1E1E", color: "#9A9A9A", padding: "2px 8px", borderRadius: 999 }}>{l.condition}</span>
                     <span style={{ fontSize: 11, color: "#E0955F", background: "#2A1D14", padding: "2px 8px", borderRadius: 999 }}>In-store only</span>
                     <DiscountBadge listing={l} />
                   </div>
-                  <div className="k" style={{ fontSize: 11, marginTop: 5 }}>updated {rel(l.updated)}</div>
+                  <div className="k" style={{ fontSize: 11, marginTop: 7 }}>updated {rel(l.updated)}</div>
                 </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <PriceTag listing={l} size={16} />
+                <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
+                  <PriceTag listing={l} size={17} />
                   {l.status === "available" ? (
-                    <button className="btn-ghost" style={{ marginTop: 8, padding: "7px 12px", fontSize: 12 }} onClick={() => requireAuth("to reserve this record", () => reserve(l))}>Reserve</button>
+                    <button className="btn-ghost" style={{ padding: "5px 13px", fontSize: 12 }} onClick={() => requireAuth("to reserve this record", () => reserve(l))}>Reserve</button>
                   ) : (
-                    <div style={{ marginTop: 10 }}><StatusPill status={l.status} /></div>
+                    <StatusPill status={l.status} />
                   )}
                 </div>
               </div>
@@ -1484,19 +1535,19 @@ export default function App() {
               <div key={l.id} className="row card" style={{ padding: "10px 12px", marginBottom: 8, alignItems: "flex-start" }}>
                 <div role="button" onClick={() => setBScreen({ name: "detail", releaseId: l.releaseId, from: "shop", shopId: s.id })}
                   style={{ display: "flex", gap: 11, flex: 1, minWidth: 0, cursor: "pointer", alignItems: "flex-start" }}>
-                  <Sleeve release={r} size={48} />
+                  <Sleeve release={r} size={44} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.title}</div>
                     <div className="k">{joinDot([r.artist, r.year, l.condition])}</div>
                     {l.discount ? <div style={{ marginTop: 5 }}><DiscountBadge listing={l} /></div> : null}
                   </div>
                 </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
                   <PriceTag listing={l} size={15} />
                   {l.status === "available" ? (
-                    <button className="btn-ghost" style={{ marginTop: 8, padding: "7px 12px", fontSize: 12 }} onClick={() => requireAuth("to reserve this record", () => reserve(l))}>Reserve</button>
+                    <button className="btn-ghost" style={{ padding: "5px 13px", fontSize: 12 }} onClick={() => requireAuth("to reserve this record", () => reserve(l))}>Reserve</button>
                   ) : (
-                    <div style={{ marginTop: 10 }}><StatusPill status={l.status} /></div>
+                    <StatusPill status={l.status} />
                   )}
                 </div>
               </div>
@@ -1713,9 +1764,9 @@ export default function App() {
       <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Settings</div>
       <div className="card" style={{ padding: "12px 14px", marginBottom: 12 }}>
         <div className="k">Signed in as</div>
-        <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2 }}>{currentUser.name}</div>
-        <div className="k">{currentUser.email}</div>
+        <div className="k" style={{ marginTop: 2 }}>{currentUser.email}</div>
       </div>
+      <NameEditor initial={currentUser.name} onSave={updateName} />
       <ShopEditor key={myShop ? myShop.id : "none"} shop={myShop} onSave={updateShop} />
       <div className="k" style={{ marginBottom: 12 }}>Stock and reservations are shared — every visitor to the app sees them. Your saved records stay private to your account.</div>
       <button className="btn-ghost" style={{ width: "100%" }} onClick={logout}>Log out</button>
@@ -1812,6 +1863,18 @@ export default function App() {
     : bScreen.name === "detail" ? BuyerDetail()
     : bScreen.name === "saved" ? (isGuest ? GateScreen("Sign in to save records you're eyeing.", "to save records") : BuyerSaved())
     : bScreen.name === "reserved" ? (isGuest ? GateScreen("Sign in to reserve records and track your pickups.", "to reserve records") : BuyerReserved())
+    : bScreen.name === "profile" ? (isGuest ? GateScreen("Sign in to view your profile.", "to view your profile") : (
+        <ProfileScreen
+          user={currentUser}
+          savedCount={saved.length}
+          reservedCount={reservations.filter((r) => r.buyerId === currentUser.id && (r.status === "pending" || r.status === "held")).length}
+          onSaveName={updateName}
+          onLogout={logout}
+          onBack={() => setBScreen({ name: "stores" })}
+          onOpenSaved={() => setBScreen({ name: "saved" })}
+          onOpenReserved={() => setBScreen({ name: "reserved" })}
+        />
+      ))
     : bScreen.name === "messages" ? (isGuest ? GateScreen("Sign in to message shops directly.", "to message shops") : BuyerMessages())
     : bScreen.name === "thread" ? (isGuest ? GateScreen("Sign in to message shops directly.", "to message shops") : BuyerThread())
     : BuyerSearch();
@@ -1859,8 +1922,7 @@ export default function App() {
                     <span role="button" onClick={() => setBScreen({ name: "saved" })} title="Saved"
                       style={{ cursor: "pointer", fontSize: 18, color: bScreen.name === "saved" ? "var(--rust)" : "var(--muted)" }}>♡</span>
                   )}
-                  <span className="k">{currentUser.name.split(" ")[0]}</span>
-                  <span role="button" onClick={logout} className="k" style={{ cursor: "pointer", color: "var(--rust)" }}>Log out</span>
+                  <span role="button" onClick={() => isOwner ? setOScreen({ name: "settings" }) : setBScreen({ name: "profile" })} className="k" style={{ cursor: "pointer", color: "var(--rust)", fontWeight: 600 }}>{currentUser.name.split(" ")[0]}</span>
                 </>
               )}
             </span>
