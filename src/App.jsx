@@ -2060,7 +2060,7 @@ export default function App() {
               <div className="k">{r.artist} · requested {rel(res.created)}</div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>{children}</div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10, maxWidth: 460 }}>{children}</div>
         </div>
       );
     };
@@ -2072,7 +2072,7 @@ export default function App() {
         ) : (
           pending.map((res) => (
             <Card key={res.id} res={res}>
-              <button className="btn-rust" style={{ padding: "9px 0", fontSize: 13 }} onClick={() => acceptReservation(res)}>Accept</button>
+              <button className="btn-rust" style={{ flex: 1, padding: "9px 0", fontSize: 13 }} onClick={() => acceptReservation(res)}>Accept</button>
               <button className="btn-ghost" style={{ flex: 1, padding: "9px 0", fontSize: 13 }} onClick={() => declineReservation(res)}>Decline</button>
             </Card>
           ))
