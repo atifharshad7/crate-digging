@@ -16,7 +16,7 @@ import { supabase } from "./supabaseClient";
 */
 
 // map snake_case DB rows -> the camelCase shapes the UI already uses
-const mapShop = (s) => ({ id: s.id, name: s.name, hood: s.hood, address: s.address, lat: s.lat, lng: s.lng, discogs: s.discogs, mapsUrl: s.maps_url, holdHours: s.hold_hours == null ? 48 : s.hold_hours, owner_id: s.owner_id });
+const mapShop = (s) => ({ id: s.id, name: s.name, hood: s.hood, address: s.address, lat: s.lat, lng: s.lng, discogs: s.discogs, mapsUrl: s.maps_url, holdHours: s.hold_hours == null ? 48 : s.hold_hours, vinylColor: s.vinyl_color || null, owner_id: s.owner_id });
 const mapRelease = (r) => ({ id: r.id, artist: r.artist, title: r.title, year: r.year, genre: r.genre, format: r.format, cover: r.cover || ["#38271F", "#C4632E"], image: r.image || undefined, youtubeUrl: r.youtube_url || undefined, tracklist: r.tracklist || undefined, discogsId: r.discogs_release_id || undefined });
 const mapListing = (l) => ({ id: l.id, shopId: l.shop_id, releaseId: l.release_id, condition: l.condition, price: l.price, qty: l.qty, status: l.status, source: l.source, discount: l.discount || undefined, updated: l.updated_at, created: l.created_at });
 const mapReservation = (r) => ({ id: r.id, listingId: r.listing_id, releaseId: r.release_id, shopId: r.shop_id, buyerId: r.buyer_id, status: r.status, holdUntil: r.hold_until || undefined, created: r.created_at });
@@ -104,14 +104,64 @@ function Sleeve({ release, size = 48 }) {
 
 function Disc({ size = 150, label = "#BF5227", spin = false }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" className={spin ? "spin" : ""} aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
+      <g className={spin ? "spin" : ""} style={{ transformBox: "view-box", transformOrigin: "50px 50px" }}>
+        <circle cx="50" cy="50" r="48" fill="#1C1C1C" />
+        {[42, 36, 30, 24].map((r) => (
+          <circle key={r} cx="50" cy="50" r={r} fill="none" stroke="#3A3A3A" strokeWidth="0.4" />
+        ))}
+        <circle cx="50" cy="50" r="15" fill="none" stroke={label} strokeWidth="2.5" opacity="0.85" />
+        <circle cx="50" cy="50" r="3" fill="#0F0F0F" />
+        <circle cx="41" cy="41" r="1.4" fill="#0F0F0F" opacity="0.5" />
+      </g>
+      <g className={spin ? "tonearm-play" : ""} style={{ transformBox: "view-box", transformOrigin: "80px 15px" }}>
+        <line x1="80" y1="15" x2="63" y2="63" stroke="#5A5A5A" strokeWidth="3" strokeLinecap="round" />
+        <line x1="80" y1="15" x2="63" y2="63" stroke="#9A9A9A" strokeWidth="1" strokeLinecap="round" />
+        <circle cx="80" cy="15" r="6" fill="#333" stroke="#565656" strokeWidth="1" />
+        <circle cx="80" cy="15" r="2" fill="#1C1C1C" />
+        <g transform="translate(34,34.8) scale(0.6)">
+          <path d="M 50 62 L 43.6 49.4 A 9 9 0 1 1 56.4 49.4 Z" fill="#F2F2F2" />
+          <circle cx="50" cy="43" r="3.4" fill="#1C1C1C" />
+        </g>
+      </g>
+    </svg>
+  );
+}
+
+const VINYL_COLORS = [
+  { id: "rust", hex: "#E0673C" }, { id: "teal", hex: "#5DCAA5" },
+  { id: "gold", hex: "#E0A13C" }, { id: "blue", hex: "#7FB2E8" },
+  { id: "plum", hex: "#B08AD8" }, { id: "crimson", hex: "#E24B4A" },
+  { id: "green", hex: "#B4C47F" }, { id: "bone", hex: "#D8D2C4" },
+];
+const DEFAULT_VINYL = "#E0673C";
+
+// map a (possibly fine-grained) genre to a browse-tile motion class
+function genreMotionClass(genre) {
+  const g = (genre || "").toLowerCase();
+  if (g.includes("schranz")) return "gm-shakehard";
+  if (g.includes("hardcore") || g.includes("gabber") || g.includes("hard techno")) return "gm-shakehard";
+  if (g.includes("techno")) return "gm-shake";
+  if (g.includes("drum") || g.includes("dnb") || g.includes("jungle")) return "gm-shake";
+  if (g.includes("afro")) return "gm-afro";
+  if (g.includes("house")) return "gm-house";
+  if (g.includes("prog") || g.includes("trance")) return "gm-prog";
+  if (g.includes("ambient") || g.includes("drone")) return "gm-ambient";
+  if (g.includes("hip") || g.includes("rap") || g.includes("trap")) return "gm-pulse";
+  if (g.includes("jazz") || g.includes("soul") || g.includes("funk") || g.includes("blues")) return "gm-sway";
+  return "gm-spin";
+}
+
+// small record (no tonearm) that animates to its genre, for browse tiles
+function GenreDisc({ genre, ring = "#E0673C", size = 44 }) {
+  return (
+    <svg className={genreMotionClass(genre)} width={size} height={size} viewBox="0 0 100 100" aria-hidden="true"
+      style={{ transformBox: "view-box", transformOrigin: "50px 50px" }}>
       <circle cx="50" cy="50" r="48" fill="#1C1C1C" />
-      {[42, 36, 30, 24].map((r) => (
-        <circle key={r} cx="50" cy="50" r={r} fill="none" stroke="#3A3A3A" strokeWidth="0.4" />
-      ))}
-      <circle cx="50" cy="50" r="15" fill="none" stroke={label} strokeWidth="2.5" opacity="0.85" />
-      <path d="M 50 62 L 43.6 49.4 A 9 9 0 1 1 56.4 49.4 Z" fill="#F2F2F2" />
-      <circle cx="50" cy="43" r="3.4" fill="#1C1C1C" />
+      <circle cx="50" cy="50" r="34" fill="none" stroke="#3A3A3A" strokeWidth="0.7" />
+      <circle cx="50" cy="50" r="22" fill="none" stroke="#3A3A3A" strokeWidth="0.7" />
+      <circle cx="50" cy="50" r="13" fill="none" stroke={ring} strokeWidth="3" />
+      <circle cx="50" cy="50" r="3" fill="#0F0F0F" />
     </svg>
   );
 }
@@ -192,7 +242,7 @@ function AuthScreen({ authTab, setAuthTab, recentEmails, onLogin, onRegister, re
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState(initialRole || "buyer");
-  const [newShop, setNewShop] = useState({ name: "", hood: "", address: "", mapsUrl: "" });
+  const [newShop, setNewShop] = useState({ name: "", hood: "", address: "", mapsUrl: "", vinylColor: "#E0673C" });
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const [emailFocus, setEmailFocus] = useState(false);
@@ -270,6 +320,15 @@ function AuthScreen({ authTab, setAuthTab, recentEmails, onLogin, onRegister, re
                   <input className="field" placeholder="Neighborhood (e.g. Kreuzberg)" value={newShop.hood} onChange={(e) => setNewShop({ ...newShop, hood: e.target.value })} style={{ marginBottom: 10 }} />
                   <input className="field" placeholder="Address (e.g. Oranienstraße 12, 10999 Berlin)" value={newShop.address} onChange={(e) => setNewShop({ ...newShop, address: e.target.value })} style={{ marginBottom: 10 }} />
                   <input className="field" placeholder="Google Maps link (optional)" value={newShop.mapsUrl} onChange={(e) => setNewShop({ ...newShop, mapsUrl: e.target.value })} />
+                  <div className="k" style={{ margin: "12px 0 8px" }}>Your vinyl colour</div>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    {VINYL_COLORS.map((c) => (
+                      <div key={c.id} role="button" onClick={() => setNewShop({ ...newShop, vinylColor: c.hex })}
+                        style={{ width: 30, height: 30, borderRadius: "50%", background: "#1C1C1C", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", outline: newShop.vinylColor === c.hex ? "2px solid var(--rust)" : "0.5px solid var(--line)", outlineOffset: 2 }}>
+                        <span style={{ width: 12, height: 12, borderRadius: "50%", background: c.hex }} />
+                      </div>
+                    ))}
+                  </div>
                   <div className="k" style={{ fontSize: 11, marginTop: 6 }}>Tip: search your shop on Google Maps → Share → Copy link, and paste it here for an exact pin.</div>
                 </div>
               )}
@@ -501,8 +560,9 @@ function ProfileScreen({ user, savedCount, reservedCount, onSaveName, onLogout, 
   );
 }
 
-function EditRecord({ listing, release, onSave, onDelete, onCancel, onSetImage, onSetTracklist, onSetPreview }) {
+function EditRecord({ listing, release, onSave, onDelete, onCancel, onSetImage, onSetTracklist, onSetPreview, onSetGenre }) {
   const [cond, setCond] = useState(listing.condition);
+  const [genre, setGenre] = useState(release.genre || "");
   const [price, setPrice] = useState(String(listing.price));
   const [qty, setQty] = useState(listing.qty);
   const [pct, setPct] = useState(listing.discount && listing.discount.pct ? String(listing.discount.pct) : "");
@@ -541,6 +601,15 @@ function EditRecord({ listing, release, onSave, onDelete, onCancel, onSetImage, 
         </div>
         <SourceBadge source={listing.source} />
       </div>
+
+      <div className="k" style={{ margin: "18px 0 6px" }}>Genre</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input className="field" value={genre} onChange={(e) => setGenre(e.target.value)} placeholder="e.g. Techno, Schranz, Jazz" style={{ flex: 1 }} />
+        <button className="btn-ghost" style={{ padding: "0 14px", fontSize: 13, opacity: genre.trim() === (release.genre || "") ? 0.5 : 1 }}
+          disabled={genre.trim() === (release.genre || "")}
+          onClick={() => onSetGenre(release.id, genre.trim())}>Save</button>
+      </div>
+      <div className="k" style={{ fontSize: 11, marginTop: 5 }}>Sets how this record is browsed. Shared across shops that stock it.</div>
 
       <div className="k" style={{ margin: "18px 0 6px" }}>Photo of the record</div>
       <div className="row" style={{ gap: 12 }}>
@@ -685,6 +754,7 @@ function ShopEditor({ shop, onSave }) {
   const [hood, setHood] = useState(shop ? shop.hood || "" : "");
   const [address, setAddress] = useState(shop ? shop.address || "" : "");
   const [mapsUrl, setMapsUrl] = useState(shop ? shop.mapsUrl || "" : "");
+  const [vinylColor, setVinylColor] = useState(shop && shop.vinylColor ? shop.vinylColor : "#E0673C");
   const initHold = shop && typeof shop.holdHours === "number" ? shop.holdHours : 48;
   const [holdDays, setHoldDays] = useState(Math.floor(initHold / 24));
   const [holdHrs, setHoldHrs] = useState(initHold % 24);
@@ -695,7 +765,7 @@ function ShopEditor({ shop, onSave }) {
   const save = async () => {
     if (busy) return;
     setErr(null); setBusy(true);
-    const e = await onSave({ name, hood, address, mapsUrl, holdHours: totalHold > 0 ? totalHold : 48 });
+    const e = await onSave({ name, hood, address, mapsUrl, holdHours: totalHold > 0 ? totalHold : 48, vinylColor });
     setBusy(false);
     if (e) setErr(e);
   };
@@ -719,6 +789,17 @@ function ShopEditor({ shop, onSave }) {
         </select>
       </div>
       <div className="k" style={{ marginTop: 8 }}>Held for {holdLabel}, then released automatically.</div>
+
+      <div style={{ marginTop: 14, fontSize: 13, fontWeight: 600 }}>Your vinyl colour</div>
+      <div className="k" style={{ marginTop: 2, marginBottom: 8 }}>Shown on your shop's spinning record.</div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {VINYL_COLORS.map((c) => (
+          <div key={c.id} role="button" onClick={() => setVinylColor(c.hex)}
+            style={{ width: 30, height: 30, borderRadius: "50%", background: "#1C1C1C", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", outline: vinylColor === c.hex ? "2px solid var(--rust)" : "0.5px solid var(--line)", outlineOffset: 2 }}>
+            <span style={{ width: 12, height: 12, borderRadius: "50%", background: c.hex }} />
+          </div>
+        ))}
+      </div>
 
       {err && <div style={{ color: "#E06B6B", fontSize: 13, marginTop: 10 }}>{err}</div>}
       <button className="btn-rust" style={{ marginTop: 12, opacity: busy ? 0.6 : 1 }} onClick={save}>{busy ? "Saving…" : "Save shop details"}</button>
@@ -877,6 +958,7 @@ export default function App() {
       const { data: shop, error: se } = await supabase.from("shops").insert({
         owner_id: user.id, name: newShop.name.trim(), hood: (newShop.hood || "").trim() || "Berlin",
         address: newShop.address.trim(), maps_url: (newShop.mapsUrl || "").trim() || null,
+        vinyl_color: newShop.vinylColor || null,
       }).select().single();
       if (se) return "Account made, but the shop couldn't be created: " + se.message;
       shopId = shop.id;
@@ -890,12 +972,13 @@ export default function App() {
     return null;
   };
 
-  const updateShop = async ({ name, hood, address, mapsUrl, holdHours }) => {
+  const updateShop = async ({ name, hood, address, mapsUrl, holdHours, vinylColor }) => {
     if (!currentUser || !currentUser.shopId) return "No shop linked to your account.";
     if (!name.trim()) return "Shop name can't be empty.";
     if (!address.trim()) return "Address can't be empty.";
     const patch = { name: name.trim(), hood: hood.trim() || "Berlin", address: address.trim(), maps_url: mapsUrl.trim() || null };
     if (typeof holdHours === "number" && holdHours > 0) patch.hold_hours = holdHours;
+    if (vinylColor) patch.vinyl_color = vinylColor;
     const { error } = await supabase.from("shops").update(patch).eq("id", currentUser.shopId);
     if (error) return error.message;
     await loadCatalog();
@@ -971,6 +1054,13 @@ export default function App() {
     const { error } = await supabase.from("releases").update({ youtube_url: (url || "").trim() || null }).eq("id", releaseId);
     if (error) console.error("preview save:", error.message);
     await loadCatalog();
+  };
+
+  const setReleaseGenre = async (releaseId, genre) => {
+    const { error } = await supabase.from("releases").update({ genre: (genre || "").trim() || null }).eq("id", releaseId);
+    if (error) { flash("Couldn't update genre"); console.error("genre save:", error.message); return; }
+    await loadCatalog();
+    flash("Genre updated");
   };
 
   const addRecord = async ({ discogs, release, newRelease, condition, price, qty, image, discount, preview }) => {
@@ -1138,7 +1228,24 @@ export default function App() {
       .tabicon{font-size:19px;line-height:1}
       .spin{animation:spin 22s linear infinite;transform-origin:50% 50%}
       @keyframes spin{to{transform:rotate(360deg)}}
-      @media (prefers-reduced-motion:reduce){.spin{animation:none}}
+      @keyframes armswing{0%{transform:rotate(-3deg)}100%{transform:rotate(6deg)}}
+      .tonearm-play{animation:armswing 20s ease-in-out infinite alternate}
+      @keyframes gm_spin{to{transform:rotate(360deg)}}
+      @keyframes gm_shake{0%,100%{transform:translate(0,0) rotate(0)}25%{transform:translate(-1px,.8px) rotate(-3deg)}50%{transform:translate(1px,-.8px) rotate(3deg)}75%{transform:translate(-.8px,-.8px) rotate(-2deg)}}
+      @keyframes gm_shakehard{0%,100%{transform:translate(0,0) rotate(0)}20%{transform:translate(-2px,1.6px) rotate(-6deg)}40%{transform:translate(2px,-1.6px) rotate(6deg)}60%{transform:translate(-1.6px,-1.4px) rotate(-5deg)}80%{transform:translate(1.6px,1.4px) rotate(5deg)}}
+      @keyframes gm_sway{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(6deg)}}
+      @keyframes gm_pulse{0%,100%{transform:scale(1)}50%{transform:scale(.88)}}
+      @keyframes gm_afro{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-2px) rotate(4deg)}}
+      .gm-spin{animation:gm_spin 4.5s linear infinite}
+      .gm-house{animation:gm_spin 2.2s linear infinite}
+      .gm-prog{animation:gm_spin 4s cubic-bezier(.4,0,.6,1) infinite}
+      .gm-ambient{animation:gm_spin 9s linear infinite}
+      .gm-shake{animation:gm_shake .3s linear infinite}
+      .gm-shakehard{animation:gm_shakehard .2s linear infinite}
+      .gm-sway{animation:gm_sway 2.6s ease-in-out infinite}
+      .gm-pulse{animation:gm_pulse 1.15s ease-in-out infinite}
+      .gm-afro{animation:gm_afro 1s ease-in-out infinite}
+      @media (prefers-reduced-motion:reduce){.spin{animation:none}.tonearm-play{animation:none}.gm-spin,.gm-house,.gm-prog,.gm-ambient,.gm-shake,.gm-shakehard,.gm-sway,.gm-pulse,.gm-afro{animation:none}}
       .modeseg{display:flex;background:var(--panel);border-radius:999px;padding:3px}
       .modeseg button{flex:1;border:none;background:transparent;border-radius:999px;padding:6px 10px;font-size:13px;color:var(--muted);cursor:pointer}
       .modeseg button.on{background:var(--rust);color:var(--cream);font-weight:600}
@@ -1239,12 +1346,22 @@ export default function App() {
         <div className="k" style={{ margin: "2px 2px 12px" }}>Browse the crates</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           {tiles.map((t, i) => (
-            <div key={t.type + (t.value || "") + i} role="button"
-              onClick={() => setBrowse({ type: t.type, value: t.value, label: t.label })}
-              style={{ position: "relative", height: 92, borderRadius: 12, cursor: "pointer", overflow: "hidden",
-                background: `linear-gradient(135deg, ${t.c1}, ${t.c2})`, padding: "12px 13px" }}>
-              <span style={{ fontSize: 15, fontWeight: 700, color: "#fff", lineHeight: 1.2, textShadow: "0 1px 3px rgba(0,0,0,.35)" }}>{t.label}</span>
-            </div>
+            t.type === "genre" ? (
+              <div key={t.type + (t.value || "") + i} role="button"
+                onClick={() => setBrowse({ type: t.type, value: t.value, label: t.label })}
+                style={{ height: 92, borderRadius: 12, cursor: "pointer", background: "var(--card)", border: "0.5px solid var(--line)",
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "8px" }}>
+                <GenreDisc genre={t.label} ring={t.c2} size={40} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", textAlign: "center", lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{t.label}</span>
+              </div>
+            ) : (
+              <div key={t.type + (t.value || "") + i} role="button"
+                onClick={() => setBrowse({ type: t.type, value: t.value, label: t.label })}
+                style={{ position: "relative", height: 92, borderRadius: 12, cursor: "pointer", overflow: "hidden",
+                  background: `linear-gradient(135deg, ${t.c1}, ${t.c2})`, padding: "12px 13px" }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: "#fff", lineHeight: 1.2, textShadow: "0 1px 3px rgba(0,0,0,.35)" }}>{t.label}</span>
+              </div>
+            )
           ))}
         </div>
       </>
@@ -1441,7 +1558,14 @@ export default function App() {
         ) : shops.map(({ s, n }) => (
           <div key={s.id} className="card" style={{ padding: "12px 13px", marginBottom: 8 }}>
             <div className="row" style={{ cursor: "pointer" }} onClick={() => setBScreen({ name: "shop", shopId: s.id })}>
-              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, borderRadius: 999, background: "var(--rust)", color: "var(--cream)", flexShrink: 0 }}>◉</span>
+              <span style={{ width: 38, height: 38, flexShrink: 0, display: "inline-flex" }}>
+                <svg className="spin" width="38" height="38" viewBox="0 0 100 100" style={{ transformBox: "view-box", transformOrigin: "50px 50px" }} aria-hidden="true">
+                  <circle cx="50" cy="50" r="48" fill="#1C1C1C" />
+                  <circle cx="50" cy="50" r="30" fill="none" stroke="#3A3A3A" strokeWidth="1" />
+                  <circle cx="50" cy="50" r="14" fill="none" stroke={s.vinylColor || DEFAULT_VINYL} strokeWidth="4" />
+                  <circle cx="50" cy="50" r="3" fill="#0F0F0F" />
+                </svg>
+              </span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 15, fontWeight: 600 }}>{s.name}</div>
                 <div className="k">{s.hood}{s.address ? " · " + s.address : ""}</div>
@@ -1533,9 +1657,9 @@ export default function App() {
           ) : recs.map((l) => {
             const r = relById[l.releaseId];
             return (
-              <div key={l.id} className="row card" style={{ padding: "10px 12px", marginBottom: 8, alignItems: "flex-start" }}>
+              <div key={l.id} className="row card" style={{ padding: "10px 12px", marginBottom: 8 }}>
                 <div role="button" onClick={() => setBScreen({ name: "detail", releaseId: l.releaseId, from: "shop", shopId: s.id })}
-                  style={{ display: "flex", gap: 11, flex: 1, minWidth: 0, cursor: "pointer", alignItems: "flex-start" }}>
+                  style={{ display: "flex", gap: 11, flex: 1, minWidth: 0, cursor: "pointer", alignItems: "center" }}>
                   <Sleeve release={r} size={44} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.title}</div>
@@ -1881,7 +2005,7 @@ export default function App() {
     : BuyerSearch();
   const ownerContent =
     oScreen.name === "add" ? <AddRecord releases={catalog.releases} listings={listings} shopId={myShopId} onSave={addRecord} onCancel={() => setOScreen({ name: "stock" })} />
-    : oScreen.name === "edit" ? <EditRecord listing={listings.find((l) => l.id === oScreen.listingId)} release={relById[listings.find((l) => l.id === oScreen.listingId)?.releaseId]} onSave={saveEdit} onDelete={deleteListing} onCancel={() => setOScreen({ name: "stock" })} onSetImage={setReleaseImage} onSetTracklist={setReleaseTracklist} onSetPreview={setReleasePreview} />
+    : oScreen.name === "edit" ? <EditRecord listing={listings.find((l) => l.id === oScreen.listingId)} release={relById[listings.find((l) => l.id === oScreen.listingId)?.releaseId]} onSave={saveEdit} onDelete={deleteListing} onCancel={() => setOScreen({ name: "stock" })} onSetImage={setReleaseImage} onSetTracklist={setReleaseTracklist} onSetPreview={setReleasePreview} onSetGenre={setReleaseGenre} />
     : oScreen.name === "reservations" ? OwnerReservations()
     : oScreen.name === "messages" ? OwnerMessages()
     : oScreen.name === "thread" ? OwnerThread()
