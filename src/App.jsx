@@ -538,7 +538,7 @@ function NameEditor({ initial, onSave }) {
   );
 }
 
-function ProfileScreen({ user, savedCount, reservedCount, onSaveName, onLogout, onBack, onOpenSaved, onOpenReserved }) {
+function ProfileScreen({ user, savedCount, reservedCount, onSaveName, onLogout, onBack, onOpenSaved, onOpenReserved, onOpenAbout }) {
   return (
     <div className="scroll" style={{ padding: "10px 18px 24px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0 14px" }}>
@@ -560,6 +560,10 @@ function ProfileScreen({ user, savedCount, reservedCount, onSaveName, onLogout, 
           <div style={{ fontSize: 22, fontWeight: 600 }}>{reservedCount}</div>
           <div className="k" style={{ marginTop: 2 }}>Reserved</div>
         </div>
+      </div>
+      <div className="card" role="button" onClick={onOpenAbout} style={{ padding: "13px 14px", marginBottom: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 14 }}>About Crate Digging</span>
+        <span style={{ color: "var(--muted)" }}>›</span>
       </div>
       <button className="btn-ghost" style={{ width: "100%" }} onClick={onLogout}>Log out</button>
     </div>
@@ -2058,6 +2062,31 @@ export default function App() {
     );
   };
 
+  const AboutScreen = (onBack) => (
+    <div style={{ padding: "6px 18px 24px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 4px 16px" }}>
+        <span role="button" onClick={onBack} style={{ fontSize: 22, color: "var(--muted)", cursor: "pointer" }}>‹</span>
+        <span style={{ fontSize: 15, fontWeight: 600 }}>About</span>
+      </div>
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+        <Disc size={72} spin />
+      </div>
+      <div className="serif" style={{ fontSize: 25, fontWeight: 600, textAlign: "center", marginBottom: 18 }}>Crate Digging</div>
+      <p style={{ fontSize: 14.5, color: "#C9C7C1", lineHeight: 1.65, margin: "0 0 14px" }}>The record you want is somewhere in Berlin, in some shop's crate. You just don't know which one. Crate Digging tells you.</p>
+      <p style={{ fontSize: 14.5, color: "#C9C7C1", lineHeight: 1.65, margin: "0 0 20px" }}>Search a record, see which shops have it and for how much, reserve it, and go pick it up. No shipping. You're not skipping the shop, you're finding the right one, then going to dig, flip, and chat like always.</p>
+      <div className="card" style={{ padding: "13px 14px", marginBottom: 10 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--rust)", marginBottom: 5 }}>Digging?</div>
+        <div className="k" style={{ lineHeight: 1.55 }}>Search anything and keep a hunting list, even for records no shop has yet. It lights up the moment one turns up. Reserve it and message the shop.</div>
+      </div>
+      <div className="card" style={{ padding: "13px 14px", marginBottom: 20 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--rust)", marginBottom: 5 }}>Running a shop?</div>
+        <div className="k" style={{ lineHeight: 1.55 }}>List your crate free, take reservations, and see what the city's hunting for. Got a record someone wants? Tell them in one tap.</div>
+      </div>
+      <div style={{ textAlign: "center", fontSize: 12, color: "var(--muted)", marginBottom: 20 }}>Pickup only · Berlin · for now</div>
+      <div className="serif" style={{ fontSize: 19, color: "var(--rust)", textAlign: "center", lineHeight: 1.35, paddingBottom: 12 }}>Find the record.<br />Go dig.</div>
+    </div>
+  );
+
   const OwnerSettings = () => (
     <div style={{ padding: "14px 18px 20px" }}>
       <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Settings</div>
@@ -2068,6 +2097,10 @@ export default function App() {
       <NameEditor initial={currentUser.name} onSave={updateName} />
       <ShopEditor key={myShop ? myShop.id : "none"} shop={myShop} onSave={updateShop} />
       <div className="k" style={{ marginBottom: 12 }}>Stock and reservations are shared — every visitor to the app sees them. Your saved records stay private to your account.</div>
+      <div className="card" role="button" onClick={() => setOScreen({ name: "about" })} style={{ padding: "13px 14px", marginBottom: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 14 }}>About Crate Digging</span>
+        <span style={{ color: "var(--muted)" }}>›</span>
+      </div>
       <button className="btn-ghost" style={{ width: "100%" }} onClick={logout}>Log out</button>
     </div>
   );
@@ -2172,10 +2205,12 @@ export default function App() {
           onBack={() => setBScreen({ name: "stores" })}
           onOpenSaved={() => setBScreen({ name: "saved" })}
           onOpenReserved={() => setBScreen({ name: "reserved" })}
+          onOpenAbout={() => setBScreen({ name: "about" })}
         />
       ))
     : bScreen.name === "messages" ? (isGuest ? GateScreen("Sign in to message shops directly.", "to message shops") : BuyerMessages())
     : bScreen.name === "thread" ? (isGuest ? GateScreen("Sign in to message shops directly.", "to message shops") : BuyerThread())
+    : bScreen.name === "about" ? AboutScreen(() => setBScreen({ name: "profile" }))
     : BuyerSearch();
   const OwnerWanted = () => {
     const counts = {};
@@ -2227,6 +2262,7 @@ export default function App() {
     : oScreen.name === "messages" ? OwnerMessages()
     : oScreen.name === "thread" ? OwnerThread()
     : oScreen.name === "settings" ? OwnerSettings()
+    : oScreen.name === "about" ? AboutScreen(() => setOScreen({ name: "settings" }))
     : OwnerStock();
 
   const pendingCount = isOwner ? reservations.filter((r) => r.shopId === myShopId && r.status === "pending").length : 0;
@@ -2241,7 +2277,7 @@ export default function App() {
     return set.size;
   })();
   const buyerTabs = [["stores", "⌂", "Stores"], ["search", "⌕", "Search"], ["messages", "✉", "Messages"], ["reserved", "◷", "Reserved"]];
-  const ownerTabs = [["stock", "≣", "Stock"], ["reservations", "◷", "Pickups"], ["wanted", "♥", "Wanted"], ["messages", "✉", "Messages"], ["settings", "⚙", "Shop"]];
+  const ownerTabs = [["stock", "≣", "Stock"], ["reservations", "◷", "Pickups"], ["wanted", "♥", "Wanted"], ["messages", "✉", "Messages"]];
   const ownerMode = isOwner;
 
   return (
