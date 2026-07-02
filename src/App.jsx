@@ -634,9 +634,11 @@ export default function App() {
   const [pendingAction, setPendingAction] = useState(null);
   const [recentEmails, setRecentEmails] = useState([]);
   const [msgSeen, setMsgSeen] = useState({});
+  const [hideGenreNote, setHideGenreNote] = useState(false);
   const [bScreen, setBScreen] = useState({ name: "search" });
   const [oScreen, setOScreen] = useState({ name: "stock" });
   const [query, setQuery] = useState("");
+  const [browse, setBrowse] = useState(null); // null | {type,value,label}
   const [shopQuery, setShopQuery] = useState("");
   const [stockFilter, setStockFilter] = useState("all");
   const [stockDate, setStockDate] = useState("all");
@@ -689,6 +691,7 @@ export default function App() {
       await loadAll();
       setRecentEmails(getRecentEmails());
       setMsgSeen(getMsgSeen());
+      try { if (localStorage.getItem("cd:hide_genre_note") === "1") setHideGenreNote(true); } catch { /* ignore */ }
       if (mounted) setLoading(false);
     })();
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -1035,25 +1038,99 @@ export default function App() {
     </div>
   );
 
-  const BuyerSearch = () => (
-    <div style={{ padding: "6px 18px 20px" }}>
-      <div className="row card" style={{ padding: "10px 12px", marginBottom: 14 }}>
-        <span style={{ color: "var(--muted)" }}>⌕</span>
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search artist or title" autoFocus
-          style={{ border: "none", background: "transparent", outline: "none", width: "100%", fontSize: 15, color: "var(--ink)" }} />
-      </div>
-      {!query.trim() ? (
+  // group a set of available listings into release rows for RecordRow
+  const rowsFromListings = (ls) => {
+    const byRel = {};
+    ls.forEach((l) => { (byRel[l.releaseId] = byRel[l.releaseId] || []).push(l); });
+    return Object.keys(byRel).map((rid) => {
+      const arr = byRel[rid];
+      return { release: relById[rid], shops: arr.length, min: Math.min(...arr.map(effPrice)) };
+    }).filter((x) => x.release).sort((a, b) => a.release.title.localeCompare(b.release.title));
+  };
+
+  const browseRows = () => {
+    const avail = listings.filter((l) => l.status === "available");
+    if (!browse) return [];
+    if (browse.type === "new") { const cut = Date.now() - 14 * 86400000; return rowsFromListings(avail.filter((l) => l.created && new Date(l.created).getTime() >= cut)); }
+    if (browse.type === "sale") return rowsFromListings(avail.filter((l) => l.discount && l.discount.pct > 0));
+    if (browse.type === "cheap") return rowsFromListings(avail.filter((l) => effPrice(l) < 20));
+    if (browse.type === "hood") return rowsFromListings(avail.filter((l) => { const s = shopById[l.shopId]; return s && s.hood === browse.value; }));
+    if (browse.type === "genre") return rowsFromListings(avail.filter((l) => { const r = relById[l.releaseId]; return r && (r.genre || "").toLowerCase() === browse.value; }));
+    return [];
+  };
+
+  const BrowseTiles = () => {
+    const avail = listings.filter((l) => l.status === "available");
+    const has = (pred) => avail.some(pred);
+    const tiles = [];
+    const cut = Date.now() - 14 * 86400000;
+    if (has((l) => l.created && new Date(l.created).getTime() >= cut)) tiles.push({ type: "new", label: "New arrivals", c1: "#1B2A4A", c2: "#5FA0B4" });
+    if (has((l) => l.discount && l.discount.pct > 0)) tiles.push({ type: "sale", label: "On sale", c1: "#3A1F2B", c2: "#E0673C" });
+    if (has((l) => effPrice(l) < 20)) tiles.push({ type: "cheap", label: "Under €20", c1: "#243027", c2: "#B4C47F" });
+    // neighborhoods with stock
+    const hoods = [];
+    avail.forEach((l) => { const s = shopById[l.shopId]; if (s && s.hood && !hoods.includes(s.hood)) hoods.push(s.hood); });
+    hoods.sort().forEach((h, i) => tiles.push({ type: "hood", value: h, label: h, c1: ["#22282E", "#2A1B3A", "#33241A", "#1F2E2A", "#20303A"][i % 5], c2: "#7FB2C4" }));
+    // genres present
+    const genres = [];
+    avail.forEach((l) => { const r = relById[l.releaseId]; const g = r && (r.genre || "").trim(); if (g && !genres.some((x) => x.toLowerCase() === g.toLowerCase())) genres.push(g); });
+    const gcolors = [["#2E2416", "#E0A13C"], ["#20161F", "#E0673C"], ["#12222E", "#7FB2C4"], ["#241C3A", "#8A7FC4"], ["#2A2018", "#C4632E"], ["#1E2A24", "#B4C47F"], ["#141414", "#E0673C"], ["#16242E", "#5FA0B4"]];
+    genres.sort().forEach((g, i) => tiles.push({ type: "genre", value: g.toLowerCase(), label: g, c1: gcolors[i % gcolors.length][0], c2: gcolors[i % gcolors.length][1] }));
+
+    if (tiles.length === 0) {
+      return (
         <div style={{ textAlign: "center", padding: "60px 24px", color: "var(--muted)" }}>
           <Disc size={54} />
           <div style={{ fontSize: 15, marginTop: 16, lineHeight: 1.5 }}>Let's dig through the crates<br />and find your perfect record.</div>
         </div>
-      ) : searchResults.length === 0 ? (
-        <div className="k" style={{ textAlign: "center", padding: "40px 20px" }}>No records match that. Try another artist or title.</div>
-      ) : (
-        searchResults.map((x) => <RecordRow key={x.release.id} r={x.release} shops={x.shops} min={x.min} />)
-      )}
-    </div>
-  );
+      );
+    }
+    return (
+      <>
+        <div className="k" style={{ margin: "2px 2px 12px" }}>Browse the crates</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {tiles.map((t, i) => (
+            <div key={t.type + (t.value || "") + i} role="button"
+              onClick={() => setBrowse({ type: t.type, value: t.value, label: t.label })}
+              style={{ position: "relative", height: 92, borderRadius: 12, cursor: "pointer", overflow: "hidden",
+                background: `linear-gradient(135deg, ${t.c1}, ${t.c2})`, padding: "12px 13px" }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "#fff", lineHeight: 1.2, textShadow: "0 1px 3px rgba(0,0,0,.35)" }}>{t.label}</span>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  };
+
+  const BuyerSearch = () => {
+    const rows = browse ? browseRows() : [];
+    return (
+      <div style={{ padding: "6px 18px 20px" }}>
+        <div className="row card" style={{ padding: "10px 12px", marginBottom: 14 }}>
+          <span style={{ color: "var(--muted)" }}>⌕</span>
+          <input value={query} onChange={(e) => { setQuery(e.target.value); if (browse) setBrowse(null); }} placeholder="Search artist or title" autoFocus
+            style={{ border: "none", background: "transparent", outline: "none", width: "100%", fontSize: 15, color: "var(--ink)" }} />
+        </div>
+        {query.trim() ? (
+          searchResults.length === 0 ? (
+            <div className="k" style={{ textAlign: "center", padding: "40px 20px" }}>No records match that. Try another artist or title.</div>
+          ) : searchResults.map((x) => <RecordRow key={x.release.id} r={x.release} shops={x.shops} min={x.min} />)
+        ) : browse ? (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <span role="button" onClick={() => setBrowse(null)} style={{ fontSize: 22, cursor: "pointer" }}>‹</span>
+              <span style={{ fontSize: 18, fontWeight: 600 }}>{browse.label}</span>
+            </div>
+            {rows.length === 0 ? (
+              <div className="k" style={{ textAlign: "center", padding: "40px 20px" }}>Nothing here right now.</div>
+            ) : rows.map((x) => <RecordRow key={x.release.id} r={x.release} shops={x.shops} min={x.min} />)}
+          </>
+        ) : (
+          BrowseTiles()
+        )}
+      </div>
+    );
+  };
 
   const BuyerDetail = () => {
     const r = relById[bScreen.releaseId];
@@ -1298,6 +1375,16 @@ export default function App() {
 
   const OwnerStock = () => (
     <div style={{ padding: "6px 18px 20px" }}>
+      {!hideGenreNote && (
+        <div className="card" style={{ padding: "11px 12px", marginBottom: 12, display: "flex", alignItems: "flex-start", gap: 10, borderColor: "var(--rust)" }}>
+          <span style={{ fontSize: 15, flexShrink: 0, color: "var(--rust)" }}>◆</span>
+          <div style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.45, color: "var(--ink)" }}>
+            Tip: add a <b>genre</b> when you list a record — buyers browse by genre, so it helps them find your stock.
+          </div>
+          <span role="button" onClick={() => { setHideGenreNote(true); try { localStorage.setItem("cd:hide_genre_note", "1"); } catch { /* ignore */ } }}
+            className="k" style={{ cursor: "pointer", fontSize: 16, lineHeight: 1, flexShrink: 0 }}>✕</span>
+        </div>
+      )}
       <div className="card" style={{ padding: "10px 13px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, borderRadius: 8, background: "var(--rust)", color: "var(--cream)", flexShrink: 0 }}>◉</span>
         <div style={{ flex: 1, minWidth: 0 }}>
