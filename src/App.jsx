@@ -1382,6 +1382,26 @@ export default function App() {
       .modeseg button.on{background:var(--rust);color:var(--cream);font-weight:600}
       .scroll{overflow-y:auto;flex:1;min-height:0;-webkit-overflow-scrolling:touch}
       .scroll::-webkit-scrollbar{width:0}
+      .cd-sidebar{display:none}
+      .cd-content{width:100%}
+      @media (min-width:860px){
+        .cd-shellwrap{max-width:none!important;width:100%!important;flex-direction:row!important}
+        .cd-topbar{display:none!important}
+        .cd-bottombar{display:none!important}
+        .cd-sidebar{display:flex;flex-direction:column;width:222px;flex:none;background:var(--panel);border-right:0.5px solid var(--line);padding:18px 12px}
+        .cd-sidebar .cd-brand{display:flex;align-items:center;gap:8px;padding:0 6px 20px}
+        .cd-sidebar .cd-navitem{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:8px;color:var(--muted);font-size:14px;margin-bottom:3px;cursor:pointer;background:none;border:none;width:100%;text-align:left;position:relative}
+        .cd-sidebar .cd-navitem.active{background:#20130C;color:var(--rust)}
+        .cd-sidebar .cd-navicon{font-size:18px;line-height:1;width:20px;text-align:center}
+        .cd-sidebar .cd-navbadge{position:absolute;left:26px;top:6px;min-width:15px;height:15px;padding:0 3px;border-radius:999px;background:var(--rust);color:var(--cream);font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center}
+        .cd-sidebar .cd-navfoot{margin-top:auto;padding:10px 12px;border-top:0.5px solid var(--line);color:var(--muted);font-size:13px;cursor:pointer}
+        .cd-main{flex:1;min-width:0;display:flex;flex-direction:column;height:100dvh}
+        .cd-content{max-width:960px;margin:0 auto;padding:8px 30px 40px}
+        .cd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;align-items:start}
+        .cd-grid>.card{margin-bottom:0!important}
+        .cd-gridtiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+        .cd-gridtiles>*{margin-bottom:0!important}
+      }
     `}</style>
   );
 
@@ -1476,7 +1496,7 @@ export default function App() {
     return (
       <>
         <div className="k" style={{ margin: "2px 2px 12px" }}>Browse the crates</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
           {tiles.map((t, i) => (
             t.type === "genre" ? (
               <div key={t.type + (t.value || "") + i} role="button"
@@ -1517,7 +1537,7 @@ export default function App() {
         {query.trim() ? (
           searchResults.length === 0 ? (
             <div className="k" style={{ textAlign: "center", padding: "40px 20px" }}>No records match that. Try another artist or title.</div>
-          ) : searchResults.map((x) => <RecordRow key={x.release.id} r={x.release} shops={x.shops} min={x.min} />)
+          ) : <div className="cd-grid">{searchResults.map((x) => <RecordRow key={x.release.id} r={x.release} shops={x.shops} min={x.min} />)}</div>
         ) : browse ? (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -1526,7 +1546,7 @@ export default function App() {
             </div>
             {rows.length === 0 ? (
               <div className="k" style={{ textAlign: "center", padding: "40px 20px" }}>Nothing here right now.</div>
-            ) : rows.map((x) => <RecordRow key={x.release.id} r={x.release} shops={x.shops} min={x.min} />)}
+            ) : <div className="cd-grid">{rows.map((x) => <RecordRow key={x.release.id} r={x.release} shops={x.shops} min={x.min} />)}</div>}
           </>
         ) : (
           BrowseTiles()
@@ -1733,7 +1753,7 @@ export default function App() {
         <div className="k" style={{ marginBottom: 14 }}>Record shops selling on Crate Digging</div>
         {shops.length === 0 ? (
           <EmptyState text="No shops are selling yet. Be the first to dig — search the crates." actionLabel="Search records" onAction={() => setBScreen({ name: "search" })} />
-        ) : shops.map(({ s, n }) => (
+        ) : (<div className="cd-grid">{shops.map(({ s, n }) => (
           <div key={s.id} className="card" style={{ padding: "12px 13px", marginBottom: 8 }}>
             <div className="row" style={{ cursor: "pointer" }} onClick={() => setBScreen({ name: "shop", shopId: s.id })}>
               <span style={{ width: 38, height: 38, flexShrink: 0, display: "inline-flex" }}>
@@ -1758,7 +1778,7 @@ export default function App() {
               <a href={gmapsUrl(s)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "var(--muted)", textDecoration: "none" }}>Open in Google Maps ↗</a>
             </div>
           </div>
-        ))}
+        ))}</div>)}
         {isGuest && (
           <div className="card" style={{ padding: "16px 15px", marginTop: 16, textAlign: "center" }}>
             <div className="serif" style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Own a record shop?</div>
@@ -1832,7 +1852,7 @@ export default function App() {
         <div style={{ padding: "14px 16px 24px" }}>
           {recs.length === 0 ? (
             <div className="k" style={{ textAlign: "center", padding: "34px 20px" }}>{all.length === 0 ? "This shop hasn't listed any records yet." : "No records match that."}</div>
-          ) : recs.map((l) => {
+          ) : (<div className="cd-grid">{recs.map((l) => {
             const r = relById[l.releaseId];
             return (
               <div key={l.id} className="row card" style={{ padding: "10px 12px", marginBottom: 8 }}>
@@ -1855,7 +1875,7 @@ export default function App() {
                 </div>
               </div>
             );
-          })}
+          })}</div>)}
         </div>
       </div>
     );
@@ -1968,7 +1988,7 @@ export default function App() {
         });
         if (myListings.length === 0) return <div className="k" style={{ textAlign: "center", padding: "30px 20px" }}>No records yet. Add your first one.</div>;
         if (shown.length === 0) return <div className="k" style={{ textAlign: "center", padding: "30px 20px" }}>Nothing matches that filter.</div>;
-        return shown.map((l) => {
+        return (<div className="cd-grid">{shown.map((l) => {
           const r = relById[l.releaseId];
           return (
             <div key={l.id} className="row card" style={{ padding: "10px 12px", marginBottom: 8 }}>
@@ -2000,7 +2020,7 @@ export default function App() {
               </div>
             </div>
           );
-        });
+        })}</div>);
       })()}
     </div>
   );
@@ -2280,61 +2300,91 @@ export default function App() {
   const ownerTabs = [["stock", "≣", "Stock"], ["reservations", "◷", "Pickups"], ["wanted", "♥", "Wanted"], ["messages", "✉", "Messages"]];
   const ownerMode = isOwner;
 
+  const navActive = (key) => ownerMode
+    ? oScreen.name === key || (key === "stock" && (oScreen.name === "add" || oScreen.name === "edit")) || (key === "messages" && oScreen.name === "thread")
+    : bScreen.name === key || (key === "search" && bScreen.name === "detail") || (key === "stores" && bScreen.name === "shop") || (key === "messages" && bScreen.name === "thread");
+  const goTab = (key) => { if (ownerMode) setOScreen({ name: key }); else { setCatalogOpen(false); setBScreen({ name: key }); } };
+  const tabBadge = (key) => (key === "reservations" && pendingCount > 0) ? pendingCount : (key === "messages" && unreadMsgThreads > 0) ? unreadMsgThreads : null;
+
   return (
     <div className="rille" style={{ height: "100dvh", background: "#000000", display: "flex", justifyContent: "center", overflow: "hidden" }}>
       {styleTag}
-      <div style={{ width: "100%", maxWidth: 393, background: "var(--cream)", height: "100dvh", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
+      <div className="cd-shellwrap" style={{ width: "100%", maxWidth: 393, background: "var(--cream)", height: "100dvh", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
 
-        <div style={{ flexShrink: 0, padding: "16px 18px 12px", paddingTop: "calc(16px + env(safe-area-inset-top))", borderBottom: "0.5px solid var(--line)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Disc size={26} />
-              <span className="serif" style={{ fontSize: 20, fontWeight: 600, letterSpacing: ".01em" }}>Crate Digging</span>
-            </span>
-            <span style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              {isGuest ? (
-                <span role="button" onClick={() => openAuth("login", "buyer", null)} className="k" style={{ cursor: "pointer", color: "var(--rust)", fontWeight: 600 }}>Log in</span>
-              ) : (
-                <>
-                  {!isOwner && (
-                    <span role="button" onClick={() => setBScreen({ name: "saved" })} title="Saved"
-                      style={{ cursor: "pointer", fontSize: 18, color: bScreen.name === "saved" ? "var(--rust)" : "var(--muted)" }}>♡</span>
-                  )}
-                  <span role="button" onClick={() => isOwner ? setOScreen({ name: "settings" }) : setBScreen({ name: "profile" })} className="k" style={{ cursor: "pointer", color: "var(--rust)", fontWeight: 600 }}>{currentUser.name.split(" ")[0]}</span>
-                </>
-              )}
-            </span>
+        <div className="cd-sidebar">
+          <div className="cd-brand">
+            <Disc size={24} />
+            <span className="serif" style={{ fontSize: 16, fontWeight: 600 }}>Crate Digging</span>
           </div>
+          {isGuest ? (
+            <button className="cd-navitem" onClick={() => openAuth("login", "buyer", null)}><span className="cd-navicon">→</span> Log in</button>
+          ) : (
+            (ownerMode ? ownerTabs : buyerTabs).map(([key, icon, label]) => {
+              const badge = tabBadge(key);
+              return (
+                <button key={key} className={"cd-navitem" + (navActive(key) ? " active" : "")} onClick={() => goTab(key)}>
+                  <span className="cd-navicon" style={{ position: "relative" }}>{icon}{badge != null && <span className="cd-navbadge">{badge}</span>}</span>
+                  {label}
+                </button>
+              );
+            })
+          )}
+          {!isGuest && !isOwner && (
+            <button className={"cd-navitem" + (bScreen.name === "saved" ? " active" : "")} onClick={() => setBScreen({ name: "saved" })}><span className="cd-navicon">♡</span> Saved</button>
+          )}
+          {!isGuest && (
+            <div className="cd-navfoot" role="button" onClick={() => isOwner ? setOScreen({ name: "settings" }) : setBScreen({ name: "profile" })}>{currentUser.name.split(" ")[0]}</div>
+          )}
         </div>
 
-        <div className="scroll">{ownerMode ? ownerContent : buyerContent}</div>
-
-        {toast && (
-          <div style={{ position: "absolute", bottom: 76, left: 0, right: 0, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
-            <div style={{ background: "var(--card)", color: "var(--ink)", border: "0.5px solid var(--line)", fontSize: 13, padding: "8px 16px", borderRadius: 999 }}>{toast}</div>
+        <div className="cd-main" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+          <div className="cd-topbar" style={{ flexShrink: 0, padding: "16px 18px 12px", paddingTop: "calc(16px + env(safe-area-inset-top))", borderBottom: "0.5px solid var(--line)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Disc size={26} />
+                <span className="serif" style={{ fontSize: 20, fontWeight: 600, letterSpacing: ".01em" }}>Crate Digging</span>
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                {isGuest ? (
+                  <span role="button" onClick={() => openAuth("login", "buyer", null)} className="k" style={{ cursor: "pointer", color: "var(--rust)", fontWeight: 600 }}>Log in</span>
+                ) : (
+                  <>
+                    {!isOwner && (
+                      <span role="button" onClick={() => setBScreen({ name: "saved" })} title="Saved"
+                        style={{ cursor: "pointer", fontSize: 18, color: bScreen.name === "saved" ? "var(--rust)" : "var(--muted)" }}>♡</span>
+                    )}
+                    <span role="button" onClick={() => isOwner ? setOScreen({ name: "settings" }) : setBScreen({ name: "profile" })} className="k" style={{ cursor: "pointer", color: "var(--rust)", fontWeight: 600 }}>{currentUser.name.split(" ")[0]}</span>
+                  </>
+                )}
+              </span>
+            </div>
           </div>
-        )}
 
-        <div style={{ flexShrink: 0, display: "flex", padding: "10px 8px 14px", paddingBottom: "calc(14px + env(safe-area-inset-bottom))", background: "var(--panel)", borderTop: "0.5px solid var(--line)" }}>
-          {(ownerMode ? ownerTabs : buyerTabs).map(([key, icon, label]) => {
-            const active = ownerMode
-              ? oScreen.name === key || (key === "stock" && (oScreen.name === "add" || oScreen.name === "edit")) || (key === "messages" && oScreen.name === "thread")
-              : bScreen.name === key || (key === "search" && bScreen.name === "detail") || (key === "stores" && bScreen.name === "shop") || (key === "messages" && bScreen.name === "thread");
-            return (
-              <button key={key} className={"tab" + (active ? " active" : "")} onClick={() => { if (ownerMode) setOScreen({ name: key }); else { setCatalogOpen(false); setBScreen({ name: key }); } }}>
-                <span className="tabicon" style={{ position: "relative" }}>
-                  {icon}
-                  {key === "reservations" && pendingCount > 0 && (
-                    <span style={{ position: "absolute", top: -4, right: -10, minWidth: 15, height: 15, padding: "0 3px", borderRadius: 999, background: "var(--rust)", color: "var(--cream)", fontSize: 10, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>{pendingCount}</span>
-                  )}
-                  {key === "messages" && unreadMsgThreads > 0 && (
-                    <span style={{ position: "absolute", top: -4, right: -10, minWidth: 15, height: 15, padding: "0 3px", borderRadius: 999, background: "var(--rust)", color: "var(--cream)", fontSize: 10, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>{unreadMsgThreads}</span>
-                  )}
-                </span>
-                <span>{label}</span>
-              </button>
-            );
-          })}
+          <div className="scroll"><div className="cd-content">{ownerMode ? ownerContent : buyerContent}</div></div>
+
+          {toast && (
+            <div style={{ position: "absolute", bottom: 76, left: 0, right: 0, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
+              <div style={{ background: "var(--card)", color: "var(--ink)", border: "0.5px solid var(--line)", fontSize: 13, padding: "8px 16px", borderRadius: 999 }}>{toast}</div>
+            </div>
+          )}
+
+          <div className="cd-bottombar" style={{ flexShrink: 0, display: "flex", padding: "10px 8px 14px", paddingBottom: "calc(14px + env(safe-area-inset-bottom))", background: "var(--panel)", borderTop: "0.5px solid var(--line)" }}>
+            {(ownerMode ? ownerTabs : buyerTabs).map(([key, icon, label]) => {
+              const active = navActive(key);
+              const badge = tabBadge(key);
+              return (
+                <button key={key} className={"tab" + (active ? " active" : "")} onClick={() => goTab(key)}>
+                  <span className="tabicon" style={{ position: "relative" }}>
+                    {icon}
+                    {badge != null && (
+                      <span style={{ position: "absolute", top: -4, right: -10, minWidth: 15, height: 15, padding: "0 3px", borderRadius: 999, background: "var(--rust)", color: "var(--cream)", fontSize: 10, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>{badge}</span>
+                    )}
+                  </span>
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
