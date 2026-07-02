@@ -813,12 +813,70 @@ function ShopEditor({ shop, onSave }) {
   );
 }
 
+function BuyerCatalog({ seed, savedDiscogsIds, onSave, onBack }) {
+  const [q, setQ] = useState(seed || "");
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    const query = q.trim();
+    if (query.length < 2) { setResults([]); setErr(false); setSearching(false); return; }
+    let cancelled = false; setSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("discogs-search", { body: { q: query } });
+        if (cancelled) return;
+        if (error) { setResults([]); setErr(true); }
+        else { setResults((data && data.results) || []); setErr(false); }
+      } catch { if (!cancelled) { setResults([]); setErr(true); } }
+      finally { if (!cancelled) setSearching(false); }
+    }, 450);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [q]);
+  return (
+    <div style={{ padding: "6px 18px 20px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <span role="button" onClick={onBack} style={{ fontSize: 22, cursor: "pointer" }}>‹</span>
+        <span style={{ fontSize: 18, fontWeight: 600 }}>Full catalog</span>
+      </div>
+      <div className="k" style={{ marginBottom: 12, lineHeight: 1.45 }}>Search every record on Discogs and add it to your hunting list — you'll see it here when a Berlin shop has it.</div>
+      <div className="row card" style={{ padding: "10px 12px", marginBottom: 14 }}>
+        <span style={{ color: "var(--muted)" }}>⌕</span>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search artist or title" autoFocus
+          style={{ border: "none", background: "transparent", outline: "none", width: "100%", fontSize: 15, color: "var(--ink)" }} />
+      </div>
+      {searching && <div className="k" style={{ textAlign: "center", padding: "20px" }}>Searching Discogs…</div>}
+      {err && <div className="k" style={{ textAlign: "center", padding: "20px", color: "#E06B6B" }}>Catalog search is unavailable right now.</div>}
+      {!searching && !err && q.trim().length >= 2 && results.length === 0 && (
+        <div className="k" style={{ textAlign: "center", padding: "20px" }}>No matches on Discogs.</div>
+      )}
+      {results.map((res) => {
+        const isSaved = res.discogsId && savedDiscogsIds.has(res.discogsId);
+        return (
+          <div key={res.discogsId || (res.artist + res.title)} className="row card" style={{ padding: "10px 12px", marginBottom: 8 }}>
+            <div style={{ width: 46, height: 46, borderRadius: 6, overflow: "hidden", flexShrink: 0, background: "var(--card)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {res.cover ? <img src={res.cover} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ color: "var(--faint)" }}>◒</span>}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{res.title}</div>
+              <div className="k">{joinDot([res.artist, res.year, res.genre])}</div>
+            </div>
+            <button disabled={isSaved} onClick={() => onSave(res)} className={isSaved ? "btn-ghost" : "btn-rust"}
+              style={{ width: "auto", padding: "7px 12px", fontSize: 13, opacity: isSaved ? 0.6 : 1, flexShrink: 0 }}>{isSaved ? "Saved" : "♡ Save"}</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [catalog, setCatalog] = useState({ shops: [], releases: [] });
   const [listings, setListings] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [wants, setWants] = useState([]);
 
   const [currentUser, setCurrentUser] = useState(null);
   const [authTab, setAuthTab] = useState("login");
@@ -834,6 +892,7 @@ export default function App() {
   const [oScreen, setOScreen] = useState({ name: "stock" });
   const [query, setQuery] = useState("");
   const [browse, setBrowse] = useState(null); // null | {type,value,label}
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const [shopQuery, setShopQuery] = useState("");
   const [shopGenre, setShopGenre] = useState("all");
   const [shopSort, setShopSort] = useState("recent");
@@ -870,9 +929,14 @@ export default function App() {
     if (error) console.error("messages load:", error.message);
     setMessages((data || []).map(mapMessage));
   };
+  const loadWants = async () => {
+    const { data, error } = await supabase.from("wants").select("*");
+    if (error) { console.error("wants load:", error.message); return; }
+    setWants((data || []).map((w) => ({ id: w.id, buyerId: w.buyer_id, releaseId: w.release_id, created: w.created_at })));
+  };
   const loadAll = async () => {
     try { await supabase.rpc("expire_stale_reservations"); } catch (e) { /* ignore */ }
-    await Promise.all([loadCatalog(), loadListings(), loadReservations(), loadMessages()]);
+    await Promise.all([loadCatalog(), loadListings(), loadReservations(), loadMessages(), loadWants()]);
   };
 
   const loadProfile = async (userId, email) => {
@@ -1006,11 +1070,54 @@ export default function App() {
   // ---- buyer actions ----
   const toggleSave = async (releaseId) => {
     if (!currentUser) return;
-    const cur = currentUser.saved || [];
-    const next = cur.includes(releaseId) ? cur.filter((x) => x !== releaseId) : [...cur, releaseId];
-    setCurrentUser({ ...currentUser, saved: next });
-    const { error } = await supabase.from("profiles").update({ saved: next }).eq("id", currentUser.id);
-    if (error) console.error("save toggle:", error.message);
+    const has = wants.some((w) => w.buyerId === currentUser.id && w.releaseId === releaseId);
+    if (has) {
+      setWants(wants.filter((w) => !(w.buyerId === currentUser.id && w.releaseId === releaseId)));
+      const { error } = await supabase.from("wants").delete().eq("buyer_id", currentUser.id).eq("release_id", releaseId);
+      if (error) { console.error("unsave:", error.message); await loadWants(); }
+    } else {
+      const { error } = await supabase.from("wants").insert({ buyer_id: currentUser.id, release_id: releaseId });
+      if (error) { flash("Couldn't save"); console.error("save:", error.message); }
+      await loadWants();
+    }
+  };
+
+  // Save a Discogs catalog result to the want-list, even if no shop stocks it yet.
+  const saveCatalogRecord = async (res) => {
+    if (!currentUser) return;
+    let releaseId = null;
+    if (res.discogsId) {
+      const { data: existing } = await supabase.from("releases").select("id").eq("discogs_release_id", res.discogsId).maybeSingle();
+      if (existing) releaseId = existing.id;
+    }
+    if (!releaseId) {
+      const { data: ins, error } = await supabase.from("releases").insert({
+        artist: res.artist || "Unknown", title: res.title || "Untitled",
+        year: res.year || null, genre: res.genre || null, format: res.format || "LP",
+        image: res.cover || null, discogs_release_id: res.discogsId || null,
+      }).select("id").single();
+      if (error) { flash("Couldn't add that record"); console.error("catalog insert:", error.message); return; }
+      releaseId = ins.id;
+    }
+    const { error: we } = await supabase.from("wants").insert({ buyer_id: currentUser.id, release_id: releaseId });
+    if (we && !/duplicate|unique/i.test(we.message)) { flash("Couldn't save"); console.error("catalog want:", we.message); }
+    await Promise.all([loadCatalog(), loadWants()]);
+    flash("Added to your hunting list");
+  };
+
+  // Owner taps to message every buyer who wants a record the shop now stocks.
+  const notifyWanters = async (releaseId) => {
+    if (!myShopId) return;
+    const r = relById[releaseId];
+    const buyerIds = wants.filter((w) => w.releaseId === releaseId).map((w) => w.buyerId);
+    if (buyerIds.length === 0) return;
+    const shopName = (myShop && myShop.name) || "the shop";
+    const body = `Good news — ${r ? r.title : "a record"}${r && r.artist ? " by " + r.artist : ""} is in stock now at ${shopName}. Reserve it and pick it up in store.`;
+    const rows = buyerIds.map((bid) => ({ shop_id: myShopId, buyer_id: bid, sender: "owner", sender_name: shopName, body }));
+    const { error } = await supabase.from("messages").insert(rows);
+    if (error) { flash("Couldn't notify"); console.error("notify:", error.message); return; }
+    await loadMessages();
+    flash(`Notified ${buyerIds.length} buyer${buyerIds.length === 1 ? "" : "s"}`);
   };
 
   const reserve = async (l) => {
@@ -1299,8 +1406,9 @@ export default function App() {
 
   const isOwner = !!currentUser && currentUser.role === "owner";
   const isGuest = !currentUser;
-  const saved = (currentUser && currentUser.saved) || [];
+  const saved = currentUser ? wants.filter((w) => w.buyerId === currentUser.id).map((w) => w.releaseId) : [];
   const savedSet = new Set(saved);
+  const savedDiscogsIds = new Set(saved.map((id) => relById[id] && relById[id].discogsId).filter(Boolean));
 
   // ---- buyer screens ----
   const RecordRow = ({ r, shops, min }) => (
@@ -1390,6 +1498,11 @@ export default function App() {
 
   const BuyerSearch = () => {
     const rows = browse ? browseRows() : [];
+    if (catalogOpen) {
+      return <BuyerCatalog seed={query} savedDiscogsIds={savedDiscogsIds}
+        onBack={() => setCatalogOpen(false)}
+        onSave={(res) => requireAuth("to build your hunting list", () => saveCatalogRecord(res))} />;
+    }
     return (
       <div style={{ padding: "6px 18px 20px" }}>
         <div className="row card" style={{ padding: "10px 12px", marginBottom: 14 }}>
@@ -1414,6 +1527,10 @@ export default function App() {
         ) : (
           BrowseTiles()
         )}
+        <div role="button" onClick={() => setCatalogOpen(true)}
+          style={{ marginTop: 18, textAlign: "center", fontSize: 13, color: "var(--rust)", cursor: "pointer", padding: "10px" }}>
+          Can't find it? Search the full catalog →
+        </div>
       </div>
     );
   };
@@ -1501,16 +1618,53 @@ export default function App() {
   };
 
   const BuyerSaved = () => {
-    const items = saved.map((id) => relById[id]).filter(Boolean);
+    const items = saved.map((id) => relById[id]).filter(Boolean).map((r) => {
+      const avail = listings.filter((l) => l.releaseId === r.id && l.status === "available");
+      const shopIds = new Set(avail.map((l) => l.shopId));
+      return { r, count: shopIds.size, min: avail.length ? Math.min(...avail.map(effPrice)) : null, available: shopIds.size > 0 };
+    });
+    const availItems = items.filter((x) => x.available).sort((a, b) => a.min - b.min);
+    const waitItems = items.filter((x) => !x.available);
+    if (items.length === 0) {
+      return (
+        <div style={{ padding: "10px 18px 20px" }}>
+          <EmptyState text="Your hunting list is empty. Tap the heart on any record — even ones no shop has yet — and we'll tell you when it turns up." actionLabel="Search the catalog" onAction={() => { setBScreen({ name: "search" }); setCatalogOpen(true); }} />
+        </div>
+      );
+    }
     return (
       <div style={{ padding: "10px 18px 20px" }}>
-        {items.length === 0 ? (
-          <EmptyState text="Nothing saved yet. Tap the heart on a record to keep it here." actionLabel="Browse shops" onAction={() => setBScreen({ name: "stores" })} />
-        ) : (
-          items.map((r) => {
-            const avail = listings.filter((l) => l.releaseId === r.id && l.status === "available");
-            return <RecordRow key={r.id} r={r} shops={avail.length} min={avail.length ? Math.min(...avail.map(effPrice)) : "—"} />;
-          })
+        <div style={{ fontSize: 22, fontWeight: 600, margin: "6px 0 2px" }}>Your hunting list</div>
+        <div className="k" style={{ marginBottom: 14 }}>{availItems.length} of {items.length} available in Berlin now</div>
+        {availItems.map(({ r, count, min }) => (
+          <div key={r.id} className="row card" style={{ padding: "10px 12px", marginBottom: 8, cursor: "pointer" }} onClick={() => setBScreen({ name: "detail", releaseId: r.id })}>
+            <Sleeve release={r} size={46} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="serif" style={{ fontSize: 16, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.title}</div>
+              <div className="k">{joinDot([r.artist, r.year])}</div>
+              <div style={{ fontSize: 12, marginTop: 4, color: "#7FCBA0", fontWeight: 600 }}>● in {count} shop{count > 1 ? "s" : ""} now</div>
+            </div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div className="k">from</div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--rust)" }}>€{min}</div>
+            </div>
+          </div>
+        ))}
+        {waitItems.length > 0 && (
+          <>
+            <div className="k" style={{ margin: "18px 2px 8px", textTransform: "uppercase", letterSpacing: ".05em", fontSize: 11 }}>Still hunting</div>
+            {waitItems.map(({ r }) => (
+              <div key={r.id} className="row card" style={{ padding: "10px 12px", marginBottom: 8, cursor: "pointer", opacity: 0.72 }} onClick={() => setBScreen({ name: "detail", releaseId: r.id })}>
+                <Sleeve release={r} size={46} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="serif" style={{ fontSize: 16, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.title}</div>
+                  <div className="k">{joinDot([r.artist, r.year])}</div>
+                  <div style={{ fontSize: 12, marginTop: 4, color: "var(--muted)" }}>No shop has it yet — we'll show it here</div>
+                </div>
+                <span role="button" onClick={(e) => { e.stopPropagation(); toggleSave(r.id); }} style={{ fontSize: 18, color: "var(--rust)", cursor: "pointer", flexShrink: 0 }}>♥</span>
+              </div>
+            ))}
+          </>
         )}
       </div>
     );
@@ -1579,7 +1733,7 @@ export default function App() {
           <div key={s.id} className="card" style={{ padding: "12px 13px", marginBottom: 8 }}>
             <div className="row" style={{ cursor: "pointer" }} onClick={() => setBScreen({ name: "shop", shopId: s.id })}>
               <span style={{ width: 38, height: 38, flexShrink: 0, display: "inline-flex" }}>
-                <svg className="spin" width="38" height="38" viewBox="0 0 100 100" style={{ transformBox: "view-box", transformOrigin: "50px 50px" }} aria-hidden="true">
+                <svg width="38" height="38" viewBox="0 0 100 100" aria-hidden="true">
                   <circle cx="50" cy="50" r="48" fill="#1C1C1C" />
                   <circle cx="50" cy="50" r="30" fill="none" stroke="#3A3A3A" strokeWidth="1" />
                   <circle cx="50" cy="50" r="14" fill="none" stroke={s.vinylColor || DEFAULT_VINYL} strokeWidth="4" />
@@ -2023,10 +2177,53 @@ export default function App() {
     : bScreen.name === "messages" ? (isGuest ? GateScreen("Sign in to message shops directly.", "to message shops") : BuyerMessages())
     : bScreen.name === "thread" ? (isGuest ? GateScreen("Sign in to message shops directly.", "to message shops") : BuyerThread())
     : BuyerSearch();
+  const OwnerWanted = () => {
+    const counts = {};
+    wants.forEach((w) => { counts[w.releaseId] = (counts[w.releaseId] || 0) + 1; });
+    const rows = Object.keys(counts).map((rid) => ({
+      rid, r: relById[rid], count: counts[rid],
+      inStock: myListings.some((l) => l.releaseId === rid && l.status === "available"),
+    })).filter((x) => x.r).sort((a, b) => b.count - a.count);
+    return (
+      <div style={{ padding: "10px 18px 20px" }}>
+        <div style={{ fontSize: 22, fontWeight: 600, margin: "6px 0 2px" }}>Most wanted</div>
+        <div className="k" style={{ marginBottom: 14 }}>Records buyers are hunting. Tap notify when you have one in stock.</div>
+        {rows.length === 0 ? (
+          <EmptyState text="No want-lists yet. As buyers save records they're hunting for, they'll appear here — handy for knowing what to stock." />
+        ) : rows.map(({ rid, r, count, inStock }) => (
+          <div key={rid} className="card" style={{ padding: "11px 12px", marginBottom: 8 }}>
+            <div className="row">
+              <Sleeve release={r} size={44} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.title}</div>
+                <div className="k">{r.artist}</div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--rust)" }}>{count}</div>
+                <div className="k" style={{ fontSize: 10 }}>want it</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, paddingTop: 10, borderTop: "0.5px solid var(--line)" }}>
+              {inStock ? (
+                <>
+                  <span style={{ fontSize: 12, color: "#7FCBA0" }}>● you have this in stock</span>
+                  <button className="btn-rust" style={{ marginLeft: "auto", width: "auto", padding: "7px 13px", fontSize: 12 }} onClick={() => notifyWanters(rid)}>Notify {count} buyer{count > 1 ? "s" : ""}</button>
+                </>
+              ) : (
+                <span style={{ fontSize: 12, color: "var(--muted)" }}>○ not in your stock</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const ownerContent =
     oScreen.name === "add" ? <AddRecord releases={catalog.releases} listings={listings} shopId={myShopId} onSave={addRecord} onCancel={() => setOScreen({ name: "stock" })} />
     : oScreen.name === "edit" ? <EditRecord listing={listings.find((l) => l.id === oScreen.listingId)} release={relById[listings.find((l) => l.id === oScreen.listingId)?.releaseId]} onSave={saveEdit} onDelete={deleteListing} onCancel={() => setOScreen({ name: "stock" })} onSetImage={setReleaseImage} onSetTracklist={setReleaseTracklist} onSetPreview={setReleasePreview} onSetGenre={setReleaseGenre} />
     : oScreen.name === "reservations" ? OwnerReservations()
+    : oScreen.name === "wanted" ? OwnerWanted()
     : oScreen.name === "messages" ? OwnerMessages()
     : oScreen.name === "thread" ? OwnerThread()
     : oScreen.name === "settings" ? OwnerSettings()
@@ -2044,7 +2241,7 @@ export default function App() {
     return set.size;
   })();
   const buyerTabs = [["stores", "⌂", "Stores"], ["search", "⌕", "Search"], ["messages", "✉", "Messages"], ["reserved", "◷", "Reserved"]];
-  const ownerTabs = [["stock", "≣", "Stock"], ["reservations", "◷", "Pickups"], ["messages", "✉", "Messages"], ["settings", "⚙", "Shop"]];
+  const ownerTabs = [["stock", "≣", "Stock"], ["reservations", "◷", "Pickups"], ["wanted", "♥", "Wanted"], ["messages", "✉", "Messages"], ["settings", "⚙", "Shop"]];
   const ownerMode = isOwner;
 
   return (
@@ -2088,7 +2285,7 @@ export default function App() {
               ? oScreen.name === key || (key === "stock" && (oScreen.name === "add" || oScreen.name === "edit")) || (key === "messages" && oScreen.name === "thread")
               : bScreen.name === key || (key === "search" && bScreen.name === "detail") || (key === "stores" && bScreen.name === "shop") || (key === "messages" && bScreen.name === "thread");
             return (
-              <button key={key} className={"tab" + (active ? " active" : "")} onClick={() => (ownerMode ? setOScreen({ name: key }) : setBScreen({ name: key }))}>
+              <button key={key} className={"tab" + (active ? " active" : "")} onClick={() => { if (ownerMode) setOScreen({ name: key }); else { setCatalogOpen(false); setBScreen({ name: key }); } }}>
                 <span className="tabicon" style={{ position: "relative" }}>
                   {icon}
                   {key === "reservations" && pendingCount > 0 && (
