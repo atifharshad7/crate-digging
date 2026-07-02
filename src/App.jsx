@@ -1396,8 +1396,8 @@ export default function App() {
         .cd-sidebar .cd-navbadge{position:absolute;left:26px;top:6px;min-width:15px;height:15px;padding:0 3px;border-radius:999px;background:var(--rust);color:var(--cream);font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center}
         .cd-sidebar .cd-navfoot{margin-top:auto;padding:10px 12px;border-top:0.5px solid var(--line);color:var(--muted);font-size:13px;cursor:pointer}
         .cd-main{flex:1;min-width:0;display:flex;flex-direction:column;height:100dvh}
-        .cd-content{max-width:960px;margin:0 auto;padding:8px 30px 40px}
-        .cd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;align-items:start}
+        .cd-content{max-width:1600px;margin:0 auto;padding:8px 34px 40px}
+        .cd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px;align-items:start}
         .cd-grid>.card{margin-bottom:0!important}
         .cd-gridtiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
         .cd-gridtiles>*{margin-bottom:0!important}
