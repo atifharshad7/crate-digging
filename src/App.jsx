@@ -16,10 +16,10 @@ import { supabase } from "./supabaseClient";
 */
 
 // map snake_case DB rows -> the camelCase shapes the UI already uses
-const mapShop = (s) => ({ id: s.id, name: s.name, hood: s.hood, address: s.address, lat: s.lat, lng: s.lng, discogs: s.discogs, mapsUrl: s.maps_url, owner_id: s.owner_id });
-const mapRelease = (r) => ({ id: r.id, artist: r.artist, title: r.title, year: r.year, genre: r.genre, format: r.format, cover: r.cover || ["#38271F", "#C4632E"], image: r.image || undefined, youtubeUrl: r.youtube_url || undefined, tracklist: r.tracklist || undefined });
+const mapShop = (s) => ({ id: s.id, name: s.name, hood: s.hood, address: s.address, lat: s.lat, lng: s.lng, discogs: s.discogs, mapsUrl: s.maps_url, holdHours: s.hold_hours == null ? 48 : s.hold_hours, owner_id: s.owner_id });
+const mapRelease = (r) => ({ id: r.id, artist: r.artist, title: r.title, year: r.year, genre: r.genre, format: r.format, cover: r.cover || ["#38271F", "#C4632E"], image: r.image || undefined, youtubeUrl: r.youtube_url || undefined, tracklist: r.tracklist || undefined, discogsId: r.discogs_release_id || undefined });
 const mapListing = (l) => ({ id: l.id, shopId: l.shop_id, releaseId: l.release_id, condition: l.condition, price: l.price, qty: l.qty, status: l.status, source: l.source, discount: l.discount || undefined, updated: l.updated_at, created: l.created_at });
-const mapReservation = (r) => ({ id: r.id, listingId: r.listing_id, releaseId: r.release_id, shopId: r.shop_id, buyerId: r.buyer_id, status: r.status, created: r.created_at });
+const mapReservation = (r) => ({ id: r.id, listingId: r.listing_id, releaseId: r.release_id, shopId: r.shop_id, buyerId: r.buyer_id, status: r.status, holdUntil: r.hold_until || undefined, created: r.created_at });
 const mapMessage = (m) => ({ id: m.id, shopId: m.shop_id, buyerId: m.buyer_id, sender: m.sender, senderName: m.sender_name || undefined, body: m.body, created: m.created_at });
 
 // minimal CSV parser: expects columns artist, title, price (header optional)
@@ -139,6 +139,17 @@ function SourceBadge({ source }) {
 
 const effPrice = (l) => (l.discount && l.discount.pct ? Math.round(l.price * (1 - l.discount.pct / 100)) : l.price);
 const joinDot = (arr) => arr.filter((x) => x !== null && x !== undefined && String(x).trim() !== "").join(" · ");
+const fmtCountdown = (until, nowMs) => {
+  const ms = new Date(until).getTime() - nowMs;
+  if (ms <= 0) return null;
+  const mins = Math.floor(ms / 60000);
+  const d = Math.floor(mins / 1440);
+  const h = Math.floor((mins % 1440) / 60);
+  const m = mins % 60;
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+};
 
 function PriceTag({ listing, size = 16 }) {
   const has = listing.discount && listing.discount.pct;
@@ -280,7 +291,10 @@ function AuthScreen({ authTab, setAuthTab, recentEmails, onLogin, onRegister, re
 // ---- add / edit sub-screens ----
 function AddRecord({ releases, listings, shopId, onSave, onCancel }) {
   const [q, setQ] = useState("");
-  const [sel, setSel] = useState(null);
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [searchErr, setSearchErr] = useState(false);
+  const [sel, setSel] = useState(null); // a Discogs result
   const [manual, setManual] = useState(false);
   const [nr, setNr] = useState({ artist: "", title: "", year: "", genre: "" });
   const [cond, setCond] = useState("NM");
@@ -291,17 +305,30 @@ function AddRecord({ releases, listings, shopId, onSave, onCancel }) {
   const [doffer, setDoffer] = useState("");
   const [preview, setPreview] = useState("");
 
-  const alreadyHere = new Set(listings.filter((l) => l.shopId === shopId).map((l) => l.releaseId));
-  const matches = q.trim()
-    ? releases.filter((r) => `${r.artist} ${r.title}`.toLowerCase().includes(q.toLowerCase())).slice(0, 6)
-    : [];
+  useEffect(() => {
+    if (manual || sel) return;
+    const query = q.trim();
+    if (query.length < 2) { setResults([]); setSearchErr(false); return; }
+    let cancelled = false;
+    setSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("discogs-search", { body: { q: query } });
+        if (cancelled) return;
+        if (error) { setResults([]); setSearchErr(true); }
+        else { setResults((data && data.results) || []); setSearchErr(false); }
+      } catch { if (!cancelled) { setResults([]); setSearchErr(true); } }
+      finally { if (!cancelled) setSearching(false); }
+    }, 450);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [q, manual, sel]);
 
   const pickImage = async (e) => {
     const file = e.target.files && e.target.files[0];
     if (file) { try { setImage(await fileToScaledDataURL(file)); } catch { /* ignore */ } }
   };
 
-  const canSave = (sel || (nr.artist && nr.title)) && price !== "" && Number(price) >= 0;
+  const canSave = (sel || (manual && nr.artist && nr.title)) && price !== "" && Number(price) >= 0;
 
   return (
     <div style={{ padding: "4px 18px 24px" }}>
@@ -311,24 +338,42 @@ function AddRecord({ releases, listings, shopId, onSave, onCancel }) {
         <span style={{ width: 44 }} />
       </div>
 
-      {!manual && (
+      {!manual && !sel && (
         <>
           <div className="k" style={{ marginBottom: 6 }}>Find on Discogs</div>
-          <input className="field" placeholder="Artist or title" value={q} onChange={(e) => { setQ(e.target.value); setSel(null); }} />
-          {matches.map((r) => (
-            <div key={r.id} onClick={() => { setSel(r); setQ(`${r.artist} — ${r.title}`); }} className="row card"
-              style={{ padding: "9px 11px", marginTop: 8, cursor: "pointer", opacity: sel?.id === r.id ? 1 : 0.95 }}>
-              <Sleeve release={r} size={38} />
+          <input className="field" placeholder="Artist or title" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+          {searching && <div className="k" style={{ marginTop: 10 }}>Searching Discogs…</div>}
+          {searchErr && <div className="k" style={{ marginTop: 10, color: "#E0955F" }}>Couldn't reach Discogs. Try again, or add it by hand below.</div>}
+          {results.map((r) => (
+            <div key={r.discogsId} onClick={() => setSel(r)} className="row card" style={{ padding: "9px 11px", marginTop: 8, cursor: "pointer" }}>
+              {r.cover
+                ? <img src={r.cover} alt="" style={{ width: 38, height: 38, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
+                : <div style={{ width: 38, height: 38, borderRadius: 4, background: "var(--card)", flexShrink: 0 }} />}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{r.title}</div>
-                <div className="k">{r.artist} · {r.year} · {r.format}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.title}</div>
+                <div className="k">{joinDot([r.artist, r.year, r.genre])}</div>
               </div>
-              {sel?.id === r.id ? <span style={{ color: "#7FCBA0" }}>✓</span> : alreadyHere.has(r.id) ? <span className="k" style={{ fontSize: 11 }}>in stock</span> : null}
             </div>
           ))}
-          <div onClick={() => { setManual(true); setSel(null); }} role="button"
-            style={{ fontSize: 13, color: "var(--rust)", cursor: "pointer", marginTop: 10 }}>
-            Not on Discogs? Add it by hand
+          <div onClick={() => { setManual(true); setSel(null); setResults([]); }} role="button"
+            style={{ fontSize: 13, color: "var(--rust)", cursor: "pointer", marginTop: 12 }}>
+            Can't find it? Add it by hand
+          </div>
+        </>
+      )}
+
+      {!manual && sel && (
+        <>
+          <div className="k" style={{ marginBottom: 6 }}>Record</div>
+          <div className="row card" style={{ padding: "10px 12px" }}>
+            {sel.cover
+              ? <img src={sel.cover} alt="" style={{ width: 46, height: 46, borderRadius: 4, objectFit: "cover", flexShrink: 0 }} />
+              : <div style={{ width: 46, height: 46, borderRadius: 4, background: "var(--card)", flexShrink: 0 }} />}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{sel.title}</div>
+              <div className="k">{joinDot([sel.artist, sel.year, sel.genre])}</div>
+            </div>
+            <span role="button" onClick={() => { setSel(null); setQ(""); }} className="k" style={{ cursor: "pointer", color: "var(--rust)" }}>Change</span>
           </div>
         </>
       )}
@@ -337,7 +382,7 @@ function AddRecord({ releases, listings, shopId, onSave, onCancel }) {
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
             <span className="k">New release</span>
-            <span onClick={() => setManual(false)} role="button" style={{ fontSize: 12, color: "var(--rust)", cursor: "pointer" }}>Search instead</span>
+            <span onClick={() => { setManual(false); setNr({ artist: "", title: "", year: "", genre: "" }); }} role="button" style={{ fontSize: 12, color: "var(--rust)", cursor: "pointer" }}>Search Discogs instead</span>
           </div>
           <input className="field" placeholder="Artist" value={nr.artist} onChange={(e) => setNr({ ...nr, artist: e.target.value })} style={{ marginBottom: 8 }} />
           <input className="field" placeholder="Title" value={nr.title} onChange={(e) => setNr({ ...nr, title: e.target.value })} style={{ marginBottom: 8 }} />
@@ -407,7 +452,7 @@ function AddRecord({ releases, listings, shopId, onSave, onCancel }) {
       </div>
 
       <button className="btn-rust" disabled={!canSave} style={{ opacity: canSave ? 1 : 0.5 }}
-        onClick={() => onSave({ release: sel, newRelease: manual ? nr : null, condition: cond, price: Number(price), qty, image, preview, discount: (Number(dpct) > 0 || doffer.trim()) ? { pct: Number(dpct) || 0, label: doffer.trim() || undefined } : undefined })}>
+        onClick={() => onSave({ discogs: !manual ? sel : null, newRelease: manual ? nr : null, condition: cond, price: Number(price), qty, image, preview, discount: (Number(dpct) > 0 || doffer.trim()) ? { pct: Number(dpct) || 0, label: doffer.trim() || undefined } : undefined })}>
         Save to stock
       </button>
     </div>
@@ -598,15 +643,21 @@ function ShopEditor({ shop, onSave }) {
   const [hood, setHood] = useState(shop ? shop.hood || "" : "");
   const [address, setAddress] = useState(shop ? shop.address || "" : "");
   const [mapsUrl, setMapsUrl] = useState(shop ? shop.mapsUrl || "" : "");
+  const initHold = shop && typeof shop.holdHours === "number" ? shop.holdHours : 48;
+  const [holdDays, setHoldDays] = useState(Math.floor(initHold / 24));
+  const [holdHrs, setHoldHrs] = useState(initHold % 24);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
+  const totalHold = holdDays * 24 + holdHrs;
+  const holdLabel = joinDot([holdDays > 0 ? `${holdDays} day${holdDays === 1 ? "" : "s"}` : null, holdHrs > 0 ? `${holdHrs} hour${holdHrs === 1 ? "" : "s"}` : null]) || "0 hours";
   const save = async () => {
     if (busy) return;
     setErr(null); setBusy(true);
-    const e = await onSave({ name, hood, address, mapsUrl });
+    const e = await onSave({ name, hood, address, mapsUrl, holdHours: totalHold > 0 ? totalHold : 48 });
     setBusy(false);
     if (e) setErr(e);
   };
+  const selStyle = { flex: 1, fontSize: 14, background: "var(--card)", color: "var(--ink)", border: "0.5px solid var(--line)", borderRadius: 10, padding: "10px 12px" };
   return (
     <div className="card" style={{ padding: "12px 14px", marginBottom: 12 }}>
       <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Your shop</div>
@@ -614,6 +665,19 @@ function ShopEditor({ shop, onSave }) {
       <input className="field" value={hood} onChange={(e) => setHood(e.target.value)} placeholder="Neighborhood" style={{ marginBottom: 8 }} />
       <input className="field" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address" style={{ marginBottom: 8 }} />
       <input className="field" value={mapsUrl} onChange={(e) => setMapsUrl(e.target.value)} placeholder="Google Maps link (optional)" />
+
+      <div style={{ marginTop: 14, fontSize: 13, fontWeight: 600 }}>Reserve hold</div>
+      <div className="k" style={{ marginTop: 2, marginBottom: 8, lineHeight: 1.4 }}>How long a reserved record is held before it goes back on the shelf.</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <select value={holdDays} onChange={(e) => setHoldDays(Number(e.target.value))} style={selStyle} aria-label="Days">
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((n) => <option key={n} value={n}>{n} day{n === 1 ? "" : "s"}</option>)}
+        </select>
+        <select value={holdHrs} onChange={(e) => setHoldHrs(Number(e.target.value))} style={selStyle} aria-label="Hours">
+          {[0, 1, 2, 3, 4, 6, 8, 12, 18].map((n) => <option key={n} value={n}>{n} hour{n === 1 ? "" : "s"}</option>)}
+        </select>
+      </div>
+      <div className="k" style={{ marginTop: 8 }}>Held for {holdLabel}, then released automatically.</div>
+
       {err && <div style={{ color: "#E06B6B", fontSize: 13, marginTop: 10 }}>{err}</div>}
       <button className="btn-rust" style={{ marginTop: 12, opacity: busy ? 0.6 : 1 }} onClick={save}>{busy ? "Saving…" : "Save shop details"}</button>
     </div>
@@ -636,6 +700,7 @@ export default function App() {
   const [recentEmails, setRecentEmails] = useState([]);
   const [msgSeen, setMsgSeen] = useState({});
   const [hideGenreNote, setHideGenreNote] = useState(false);
+  const [nowTick, setNowTick] = useState(Date.now());
   const [bScreen, setBScreen] = useState({ name: "stores" });
   const [oScreen, setOScreen] = useState({ name: "stock" });
   const [query, setQuery] = useState("");
@@ -676,7 +741,10 @@ export default function App() {
     if (error) console.error("messages load:", error.message);
     setMessages((data || []).map(mapMessage));
   };
-  const loadAll = async () => { await Promise.all([loadCatalog(), loadListings(), loadReservations(), loadMessages()]); };
+  const loadAll = async () => {
+    try { await supabase.rpc("expire_stale_reservations"); } catch (e) { /* ignore */ }
+    await Promise.all([loadCatalog(), loadListings(), loadReservations(), loadMessages()]);
+  };
 
   const loadProfile = async (userId, email) => {
     const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
@@ -706,6 +774,11 @@ export default function App() {
   }, []);
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 1800); };
+
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, []);
 
   const openAuth = (tab = "login", role = "buyer", reason = null) => {
     setAuthTab(tab); setAuthInitialRole(role); setAuthReason(reason); setShowAuth(true);
@@ -775,13 +848,13 @@ export default function App() {
     return null;
   };
 
-  const updateShop = async ({ name, hood, address, mapsUrl }) => {
+  const updateShop = async ({ name, hood, address, mapsUrl, holdHours }) => {
     if (!currentUser || !currentUser.shopId) return "No shop linked to your account.";
     if (!name.trim()) return "Shop name can't be empty.";
     if (!address.trim()) return "Address can't be empty.";
-    const { error } = await supabase.from("shops").update({
-      name: name.trim(), hood: hood.trim() || "Berlin", address: address.trim(), maps_url: mapsUrl.trim() || null,
-    }).eq("id", currentUser.shopId);
+    const patch = { name: name.trim(), hood: hood.trim() || "Berlin", address: address.trim(), maps_url: mapsUrl.trim() || null };
+    if (typeof holdHours === "number" && holdHours > 0) patch.hold_hours = holdHours;
+    const { error } = await supabase.from("shops").update(patch).eq("id", currentUser.shopId);
     if (error) return error.message;
     await loadCatalog();
     flash("Shop updated");
@@ -849,11 +922,32 @@ export default function App() {
     await loadCatalog();
   };
 
-  const addRecord = async ({ release, newRelease, condition, price, qty, image, discount, preview }) => {
+  const addRecord = async ({ discogs, release, newRelease, condition, price, qty, image, discount, preview }) => {
     if (!currentUser || !currentUser.shopId) { flash("No shop linked to your account"); return; }
+    const palette = [["#2C3A2E", "#D8763A"], ["#33283F", "#6FA5A0"], ["#3B2C22", "#E09A3C"], ["#20242E", "#5DCAA5"]];
     let releaseId;
-    if (newRelease) {
-      const palette = [["#2C3A2E", "#D8763A"], ["#33283F", "#6FA5A0"], ["#3B2C22", "#E09A3C"], ["#20242E", "#5DCAA5"]];
+    if (discogs && discogs.discogsId) {
+      // reuse an existing release with the same Discogs id (same record, any spelling)
+      const { data: existing } = await supabase.from("releases").select("id").eq("discogs_release_id", discogs.discogsId).limit(1).maybeSingle();
+      if (existing && existing.id) {
+        releaseId = existing.id;
+        const patch = {};
+        if (image) patch.image = image;                       // owner photo overrides
+        if (preview && preview.trim()) patch.youtube_url = preview.trim();
+        if (Object.keys(patch).length) await supabase.from("releases").update(patch).eq("id", releaseId);
+      } else {
+        const { data: rel, error } = await supabase.from("releases").insert({
+          artist: discogs.artist || "", title: discogs.title || "", year: discogs.year || null,
+          genre: discogs.genre || "", format: discogs.format || "LP",
+          cover: palette[Math.floor(Math.random() * palette.length)],
+          image: image || discogs.cover || null,             // owner photo, else Discogs cover
+          discogs_release_id: discogs.discogsId,
+          youtube_url: (preview || "").trim() || null,
+        }).select().single();
+        if (error) { flash("Couldn't add the record"); console.error(error.message); return; }
+        releaseId = rel.id;
+      }
+    } else if (newRelease) {
       const { data: rel, error } = await supabase.from("releases").insert({
         artist: newRelease.artist, title: newRelease.title, year: Number(newRelease.year) || null,
         genre: newRelease.genre || "", format: "LP", cover: palette[Math.floor(Math.random() * palette.length)],
@@ -861,12 +955,14 @@ export default function App() {
       }).select().single();
       if (error) { flash("Couldn't add the record"); console.error(error.message); return; }
       releaseId = rel.id;
-    } else {
+    } else if (release) {
       releaseId = release.id;
       const patch = {};
       if (image) patch.image = image;
       if (preview && preview.trim()) patch.youtube_url = preview.trim();
       if (Object.keys(patch).length) await supabase.from("releases").update(patch).eq("id", releaseId);
+    } else {
+      flash("Pick a record first"); return;
     }
     const { error: le } = await supabase.from("listings").insert({
       shop_id: currentUser.shopId, release_id: releaseId, condition, price, qty,
@@ -909,8 +1005,10 @@ export default function App() {
 
   // ---- reservation approval ----
   const acceptReservation = async (res) => {
+    const hrs = (myShop && myShop.holdHours) || 48;
+    const holdUntil = new Date(Date.now() + hrs * 3600000).toISOString();
     await supabase.from("listings").update({ status: "reserved", updated_at: new Date().toISOString() }).eq("id", res.listingId);
-    await supabase.from("reservations").update({ status: "held" }).eq("id", res.id);
+    await supabase.from("reservations").update({ status: "held", hold_until: holdUntil }).eq("id", res.id);
     await Promise.all([loadListings(), loadReservations()]); flash("Reservation accepted");
   };
   const declineReservation = async (res) => {
@@ -1230,7 +1328,8 @@ export default function App() {
   };
 
   const BuyerReserved = () => {
-    const held = reservations.filter((r) => (r.status === "held" || r.status === "pending") && r.buyerId === currentUser.id);
+    const held = reservations.filter((r) => (r.status === "held" || r.status === "pending" || r.status === "expired") && r.buyerId === currentUser.id)
+      .sort((a, b) => new Date(b.created) - new Date(a.created));
     return (
       <div style={{ padding: "10px 18px 20px" }}>
         {held.length === 0 ? (
@@ -1238,20 +1337,29 @@ export default function App() {
         ) : (
           held.map((res) => {
             const r = relById[res.releaseId]; const s = shopById[res.shopId];
+            const countdown = res.status === "held" && res.holdUntil ? fmtCountdown(res.holdUntil, nowTick) : null;
+            let line, pill;
+            if (res.status === "pending") { line = "waiting for the shop to accept"; pill = "pending"; }
+            else if (res.status === "expired") { line = "hold expired — back on the shelf"; pill = "expired"; }
+            else { line = countdown ? `pick up within ${countdown}` : "ready to pick up in store"; pill = "reserved"; }
             return (
-              <div key={res.id} className="card" style={{ padding: "11px 13px", marginBottom: 8 }}>
+              <div key={res.id} className="card" style={{ padding: "11px 13px", marginBottom: 8, opacity: res.status === "expired" ? 0.6 : 1 }}>
                 <div className="row">
                   <Sleeve release={r} size={46} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="serif" style={{ fontSize: 15, fontWeight: 600 }}>{r.title}</div>
-                    <div className="k">{s.name} · {s.hood}</div>
-                    <div className="k" style={{ fontSize: 11, marginTop: 3 }}>{res.status === "pending" ? "waiting for the shop to accept" : "ready to pick up in store"}</div>
+                    <div className="k">{joinDot([s.name, s.hood])}</div>
+                    <div className="k" style={{ fontSize: 11, marginTop: 3, color: countdown ? "var(--rust)" : "var(--muted)" }}>{line}</div>
                   </div>
-                  <StatusPill status={res.status === "pending" ? "pending" : "reserved"} />
+                  {pill === "expired"
+                    ? <span className="k" style={{ fontSize: 11, background: "#1E1E1E", color: "#9A9A9A", padding: "3px 9px", borderRadius: 999 }}>Expired</span>
+                    : <StatusPill status={pill} />}
                 </div>
-                <div style={{ marginTop: 8, paddingTop: 8, borderTop: "0.5px solid var(--line)" }}>
-                  <span role="button" onClick={() => setBScreen({ name: "thread", shopId: res.shopId, from: "messages" })} style={{ fontSize: 13, color: "var(--rust)", cursor: "pointer" }}>Message shop ✉</span>
-                </div>
+                {res.status !== "expired" && (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: "0.5px solid var(--line)" }}>
+                    <span role="button" onClick={() => setBScreen({ name: "thread", shopId: res.shopId, from: "messages" })} style={{ fontSize: 13, color: "var(--rust)", cursor: "pointer" }}>Message shop ✉</span>
+                  </div>
+                )}
               </div>
             );
           })
@@ -1579,12 +1687,22 @@ export default function App() {
         {held.length === 0 ? (
           <div className="k" style={{ textAlign: "center", padding: "20px" }}>No pickups waiting.</div>
         ) : (
-          held.map((res) => (
-            <Card key={res.id} res={res}>
-              <button className="btn-rust" style={{ padding: "9px 0", fontSize: 13 }} onClick={() => markPickedUp(res)}>Mark picked up</button>
-              <button className="btn-ghost" style={{ flex: 1, padding: "9px 0", fontSize: 13 }} onClick={() => cancelReservation(res)}>Release</button>
-            </Card>
-          ))
+          held.map((res) => {
+            const cd = res.holdUntil ? fmtCountdown(res.holdUntil, nowTick) : null;
+            return (
+              <Card key={res.id} res={res}>
+                <div style={{ width: "100%" }}>
+                  <div className="k" style={{ fontSize: 11, marginBottom: 8, color: cd ? "var(--rust)" : "var(--muted)" }}>
+                    {cd ? `Held — ${cd} left to pick up` : "Held"}
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button className="btn-rust" style={{ padding: "9px 0", fontSize: 13, flex: 1 }} onClick={() => markPickedUp(res)}>Mark picked up</button>
+                    <button className="btn-ghost" style={{ flex: 1, padding: "9px 0", fontSize: 13 }} onClick={() => cancelReservation(res)}>Release</button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })
         )}
       </div>
     );
