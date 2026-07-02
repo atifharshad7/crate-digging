@@ -175,11 +175,11 @@ function distanceKm(a, b) {
 }
 
 // ---- auth screen (login / register) ----
-function AuthScreen({ authTab, setAuthTab, recentEmails, onLogin, onRegister }) {
+function AuthScreen({ authTab, setAuthTab, recentEmails, onLogin, onRegister, reason, onBack, initialRole }) {
   const [email, setEmail] = useState((recentEmails && recentEmails[0]) || "");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState("buyer");
+  const [role, setRole] = useState(initialRole || "buyer");
   const [newShop, setNewShop] = useState({ name: "", hood: "", address: "", mapsUrl: "" });
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -203,10 +203,16 @@ function AuthScreen({ authTab, setAuthTab, recentEmails, onLogin, onRegister }) 
   return (
     <div className="rille" style={{ minHeight: "100dvh", background: "#000000", display: "flex", justifyContent: "center" }}>
       <div style={{ width: "100%", maxWidth: 393, background: "var(--cream)", minHeight: "100dvh", display: "flex", flexDirection: "column", padding: "0 22px" }}>
-        <div style={{ textAlign: "center", paddingTop: 48 }}>
+        {onBack && (
+          <div style={{ paddingTop: 14 }}>
+            <span role="button" onClick={onBack} className="k" style={{ cursor: "pointer", fontSize: 14 }}>‹ Back to browsing</span>
+          </div>
+        )}
+        <div style={{ textAlign: "center", paddingTop: onBack ? 24 : 48 }}>
           <Disc size={72} spin />
           <div className="serif" style={{ fontSize: 26, fontWeight: 600, marginTop: 10 }}>Crate Digging</div>
           <div className="k" style={{ marginTop: 4 }}>Find the record, find the shop.</div>
+          {reason && <div style={{ marginTop: 14, fontSize: 14, color: "var(--rust)" }}>Create a free account {reason}.</div>}
         </div>
 
         <div className="modeseg" style={{ marginTop: 32 }}>
@@ -622,6 +628,10 @@ export default function App() {
 
   const [currentUser, setCurrentUser] = useState(null);
   const [authTab, setAuthTab] = useState("login");
+  const [showAuth, setShowAuth] = useState(false);
+  const [authReason, setAuthReason] = useState(null);
+  const [authInitialRole, setAuthInitialRole] = useState("buyer");
+  const [pendingAction, setPendingAction] = useState(null);
   const [recentEmails, setRecentEmails] = useState([]);
   const [msgSeen, setMsgSeen] = useState({});
   const [bScreen, setBScreen] = useState({ name: "search" });
@@ -690,6 +700,27 @@ export default function App() {
   }, []);
 
   const flash = (m) => { setToast(m); setTimeout(() => setToast(null), 1800); };
+
+  const openAuth = (tab = "login", role = "buyer", reason = null) => {
+    setAuthTab(tab); setAuthInitialRole(role); setAuthReason(reason); setShowAuth(true);
+  };
+  // Guests can browse freely; actions that need an account funnel through here.
+  const requireAuth = (reason, action) => {
+    if (currentUser) { if (action) action(); return; }
+    setPendingAction(action ? { run: action } : null);
+    openAuth("register", "buyer", reason || null);
+  };
+  // After a guest signs in, resume whatever they were trying to do.
+  useEffect(() => {
+    if (currentUser && pendingAction) {
+      const p = pendingAction;
+      setPendingAction(null); setShowAuth(false); setAuthReason(null);
+      setTimeout(() => { try { p.run(); } catch { /* ignore */ } }, 80);
+    } else if (currentUser && showAuth) {
+      setShowAuth(false); setAuthReason(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
 
   const rememberEmail = (email) => {
     const em = (email || "").trim().toLowerCase();
@@ -972,17 +1003,20 @@ export default function App() {
     );
   }
 
-  if (!currentUser) {
+  if (showAuth && !currentUser) {
     return (
       <>
         {styleTag}
-        <AuthScreen authTab={authTab} setAuthTab={setAuthTab} recentEmails={recentEmails} onLogin={login} onRegister={register} />
+        <AuthScreen authTab={authTab} setAuthTab={setAuthTab} recentEmails={recentEmails} onLogin={login} onRegister={register}
+          reason={authReason} initialRole={authInitialRole}
+          onBack={() => { setShowAuth(false); setAuthReason(null); setPendingAction(null); }} />
       </>
     );
   }
 
-  const isOwner = currentUser.role === "owner";
-  const saved = currentUser.saved || [];
+  const isOwner = !!currentUser && currentUser.role === "owner";
+  const isGuest = !currentUser;
+  const saved = (currentUser && currentUser.saved) || [];
   const savedSet = new Set(saved);
 
   // ---- buyer screens ----
@@ -1030,7 +1064,7 @@ export default function App() {
       <div className="scroll">
         <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 16px 0" }}>
           <span role="button" onClick={() => setBScreen({ name: "search" })} style={{ fontSize: 22, cursor: "pointer" }}>‹</span>
-          <span role="button" onClick={() => toggleSave(r.id)} style={{ fontSize: 20, cursor: "pointer", color: isSaved ? "var(--rust)" : "var(--faint)" }}>{isSaved ? "♥" : "♡"}</span>
+          <span role="button" onClick={() => requireAuth("to save records", () => toggleSave(r.id))} style={{ fontSize: 20, cursor: "pointer", color: isSaved ? "var(--rust)" : "var(--faint)" }}>{isSaved ? "♥" : "♡"}</span>
         </div>
         <div style={{ position: "relative", height: 170, margin: "4px 18px 0" }}>
           <div style={{ position: "absolute", right: 18, top: 12 }}><Disc size={140} label={r.cover[1]} spin /></div>
@@ -1089,7 +1123,7 @@ export default function App() {
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
                   <PriceTag listing={l} size={16} />
                   {l.status === "available" ? (
-                    <button className="btn-ghost" style={{ marginTop: 8, padding: "7px 12px", fontSize: 12 }} onClick={() => reserve(l)}>Reserve</button>
+                    <button className="btn-ghost" style={{ marginTop: 8, padding: "7px 12px", fontSize: 12 }} onClick={() => requireAuth("to reserve this record", () => reserve(l))}>Reserve</button>
                   ) : (
                     <div style={{ marginTop: 10 }}><StatusPill status={l.status} /></div>
                   )}
@@ -1187,6 +1221,13 @@ export default function App() {
             </div>
           </div>
         ))}
+        {isGuest && (
+          <div className="card" style={{ padding: "16px 15px", marginTop: 16, textAlign: "center" }}>
+            <div className="serif" style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>Own a record shop?</div>
+            <div className="k" style={{ marginBottom: 12, lineHeight: 1.5 }}>List your stock for free and let Berlin diggers find you. Take reservations and message buyers, all in one place.</div>
+            <button className="btn-rust" style={{ width: "auto", padding: "9px 18px" }} onClick={() => openAuth("register", "owner", "to list your shop")}>List your shop</button>
+          </div>
+        )}
       </div>
     );
   };
@@ -1211,7 +1252,7 @@ export default function App() {
           <div className="k" style={{ marginTop: 2 }}>{availCount} record{availCount === 1 ? "" : "s"} available · in-store pickup only</div>
           <div style={{ display: "flex", gap: 16, marginTop: 10 }}>
             <a href={gmapsUrl(s)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "var(--rust)", textDecoration: "none" }}>Open in Google Maps ↗</a>
-            <span role="button" onClick={() => setBScreen({ name: "thread", shopId: s.id, from: "shop" })} style={{ fontSize: 13, color: "var(--rust)", cursor: "pointer" }}>Message shop ✉</span>
+            <span role="button" onClick={() => requireAuth("to message this shop", () => setBScreen({ name: "thread", shopId: s.id, from: "shop" }))} style={{ fontSize: 13, color: "var(--rust)", cursor: "pointer" }}>Message shop ✉</span>
           </div>
         </div>
         <div style={{ padding: "14px 16px 0" }}>
@@ -1237,7 +1278,7 @@ export default function App() {
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
                   <PriceTag listing={l} size={15} />
                   {l.status === "available" ? (
-                    <button className="btn-ghost" style={{ marginTop: 8, padding: "7px 12px", fontSize: 12 }} onClick={() => reserve(l)}>Reserve</button>
+                    <button className="btn-ghost" style={{ marginTop: 8, padding: "7px 12px", fontSize: 12 }} onClick={() => requireAuth("to reserve this record", () => reserve(l))}>Reserve</button>
                   ) : (
                     <div style={{ marginTop: 10 }}><StatusPill status={l.status} /></div>
                   )}
@@ -1251,7 +1292,7 @@ export default function App() {
   };
 
   // ---- owner screens ----
-  const myShopId = currentUser.shopId;
+  const myShopId = currentUser ? currentUser.shopId : null;
   const myListings = listings.filter((l) => l.shopId === myShopId);
   const myShop = shopById[myShopId];
 
@@ -1525,14 +1566,18 @@ export default function App() {
   // ---- assembly ----
   // Screens are invoked as functions (not <Comp/>) so they inline into this
   // render — that keeps text inputs from losing focus on each keystroke.
+  const GateScreen = (text, reason) => (
+    <EmptyState text={text} actionLabel="Sign up" onAction={() => openAuth("register", "buyer", reason)} />
+  );
+
   const buyerContent =
     bScreen.name === "stores" ? StoresScreen()
     : bScreen.name === "shop" ? ShopScreen()
     : bScreen.name === "detail" ? BuyerDetail()
-    : bScreen.name === "saved" ? BuyerSaved()
-    : bScreen.name === "reserved" ? BuyerReserved()
-    : bScreen.name === "messages" ? BuyerMessages()
-    : bScreen.name === "thread" ? BuyerThread()
+    : bScreen.name === "saved" ? (isGuest ? GateScreen("Sign in to save records you're eyeing.", "to save records") : BuyerSaved())
+    : bScreen.name === "reserved" ? (isGuest ? GateScreen("Sign in to reserve records and track your pickups.", "to reserve records") : BuyerReserved())
+    : bScreen.name === "messages" ? (isGuest ? GateScreen("Sign in to message shops directly.", "to message shops") : BuyerMessages())
+    : bScreen.name === "thread" ? (isGuest ? GateScreen("Sign in to message shops directly.", "to message shops") : BuyerThread())
     : BuyerSearch();
   const ownerContent =
     oScreen.name === "add" ? <AddRecord releases={catalog.releases} listings={listings} shopId={myShopId} onSave={addRecord} onCancel={() => setOScreen({ name: "stock" })} />
@@ -1570,12 +1615,18 @@ export default function App() {
               <span className="serif" style={{ fontSize: 20, fontWeight: 600, letterSpacing: ".01em" }}>Crate Digging</span>
             </span>
             <span style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              {!isOwner && (
-                <span role="button" onClick={() => setBScreen({ name: "saved" })} title="Saved"
-                  style={{ cursor: "pointer", fontSize: 18, color: bScreen.name === "saved" ? "var(--rust)" : "var(--muted)" }}>♡</span>
+              {isGuest ? (
+                <span role="button" onClick={() => openAuth("login", "buyer", null)} className="k" style={{ cursor: "pointer", color: "var(--rust)", fontWeight: 600 }}>Log in</span>
+              ) : (
+                <>
+                  {!isOwner && (
+                    <span role="button" onClick={() => setBScreen({ name: "saved" })} title="Saved"
+                      style={{ cursor: "pointer", fontSize: 18, color: bScreen.name === "saved" ? "var(--rust)" : "var(--muted)" }}>♡</span>
+                  )}
+                  <span className="k">{currentUser.name.split(" ")[0]}</span>
+                  <span role="button" onClick={logout} className="k" style={{ cursor: "pointer", color: "var(--rust)" }}>Log out</span>
+                </>
               )}
-              <span className="k">{currentUser.name.split(" ")[0]}</span>
-              <span role="button" onClick={logout} className="k" style={{ cursor: "pointer", color: "var(--rust)" }}>Log out</span>
             </span>
           </div>
         </div>
