@@ -1399,8 +1399,8 @@ export default function App() {
       .cd-auth-hero{display:none}
       .cd-content{width:100%;min-height:100%;display:flex;flex-direction:column}
       @media (min-width:860px){
-        .cd-app{justify-content:flex-start!important}
-        .cd-shellwrap{max-width:none!important;width:100%!important;flex:1 1 auto!important;flex-direction:row!important}
+        .cd-app{display:block!important}
+        .cd-shellwrap{max-width:none!important;width:100%!important;flex-direction:row!important}
         .cd-topbar{display:none!important}
         .cd-bottombar{display:none!important}
         .cd-sidebar{display:flex;flex-direction:column;width:222px;flex:none;background:var(--panel);border-right:0.5px solid var(--line);padding:18px 12px}
