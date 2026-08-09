@@ -158,7 +158,5 @@ The site auto-builds on every push to `main` once you've connected the repo unde
 <img width="1512" height="864" alt="Screenshot 2026-08-09 at 11 26 00 PM" src="https://github.com/user-attachments/assets/615d00e3-6a49-4b90-8913-23c28875cd8d" />
 <img width="1512" height="864" alt="Screenshot 2026-08-09 at 11 26 15 PM" src="https://github.com/user-attachments/assets/605543a8-10b8-49c1-9a4a-3b9533abfeeb" />
 <img width="1512" height="864" alt="Screenshot 2026-08-09 at 11 28 22 PM" src="https://github.com/user-attachments/assets/23f49d47-1fe6-4af1-ac80-30c0f00c3165" />
-<img width="1512" height="982" alt="Screenshot 2026-08-09 at 7 49 23 PM" src="https://github.com/user-attachments/assets/d954a269-efdd-49ce-a659-37fe953bd9a0" />
-<img width="1512" height="982" alt="Screenshot 2026-08-09 at 9 15 47 PM" src="https://github.com/user-attachments/assets/8d2fcd75-1905-402f-8204-f037a89e2e97" />
-<img width="1512" height="982" alt="Screenshot 2026-08-09 at 5 52 36 PM" src="https://github.com/user-attachments/assets/58042f24-e02f-4c7e-ae95-fa2c8fabf020" />
+
 
