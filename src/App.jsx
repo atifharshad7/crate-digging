@@ -1367,63 +1367,57 @@ export default function App() {
       .sort((a, b) => a.s - b.s || a.release.title.localeCompare(b.release.title));
   }, [query, catalog.releases, listings]);
 
-  // Vibe search: ask Claude (via the ai-search function) to turn a phrase into
-  // tags/genres/keywords, then rank records by how well their stored tags match.
-  // Falls back to a plain text match if the AI call is unavailable.
+  // Vibe search (retrieve → re-rank):
+  // 1) cheaply gather the in-stock records as candidates,
+  // 2) send them to Claude (ai-search) which VETS + ORDERS the ones that truly
+  //    fit the request in both mood AND kind of music (drops wrong-genre records),
+  // 3) show Claude's picks. Falls back to local tag matching if the call fails.
   const runVibeSearch = async () => {
     const q = vibeQuery.trim();
     if (!q || vibeBusy) return;
     setVibeBusy(true); setVibeResults(null); setVibeInfo(null);
 
-    let info = null;
+    // In-stock records only (a digger can only buy what a shop has).
+    const avail = catalog.releases.map((r) => {
+      const ls = listings.filter((l) => l.releaseId === r.id && l.status === "available");
+      return ls.length ? { r, shops: ls.length, min: Math.min(...ls.map(effPrice)) } : null;
+    }).filter(Boolean);
+
+    // Candidate cap for scale: if the catalogue is large, pre-trim by crude
+    // word overlap so we never send more than ~40 records to Claude. At demo
+    // size this keeps everything.
+    let cands = avail;
+    if (avail.length > 40) {
+      const words = q.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+      cands = avail.map((x) => {
+        const hay = (x.r.artist + " " + x.r.title + " " + (x.r.genre || "") + " " + (x.r.tags || []).join(" ")).toLowerCase();
+        return { x, n: words.reduce((n, w) => n + (hay.includes(w) ? 1 : 0), 0) };
+      }).sort((a, b) => b.n - a.n).slice(0, 40).map((o) => o.x);
+    }
+
+    const payload = cands.map((x, i) => ({
+      i: i + 1, artist: x.r.artist, title: x.r.title, genre: x.r.genre || "", tags: x.r.tags || [],
+    }));
+
+    let picks = null, tags = [];
     try {
-      const { data, error } = await supabase.functions.invoke("ai-search", { body: { q } });
-      if (!error && data && !data.fallback) info = data;
+      const { data, error } = await supabase.functions.invoke("ai-search", { body: { q, candidates: payload } });
+      if (!error && data && Array.isArray(data.picks)) { picks = data.picks; tags = data.tags || []; }
     } catch (e) { console.error("ai-search:", e); }
 
-    const wantTags = (info && info.tags) || [];
-    const wantTagSet = new Set(wantTags);
-    const wantGenres = (info && info.genres) || [];
-    const wantKeywords = (info && info.keywords) || [];
-    const ql = q.toLowerCase();
-    // How many query tags must a record hit to qualify (unless it matches a
-    // genre or a named artist). Prevents one incidental shared tag from showing.
-    const minTagMatch = Math.min(2, wantTags.length || 1);
+    let ranked;
+    if (picks) {
+      // Claude's vetted, ordered selection (indices are 1-based into cands).
+      ranked = picks.map((n) => cands[n - 1]).filter(Boolean)
+        .map((x) => ({ release: x.r, shops: x.shops, min: x.min }));
+    } else {
+      // Fallback: plain text match on artist/title so search never hard-fails.
+      const ql = q.toLowerCase();
+      ranked = avail.filter((x) => (x.r.artist + " " + x.r.title).toLowerCase().includes(ql))
+        .map((x) => ({ release: x.r, shops: x.shops, min: x.min }));
+    }
 
-    const ranked = catalog.releases.map((r) => {
-      const avail = listings.filter((l) => l.releaseId === r.id && l.status === "available");
-      if (!avail.length) return null;
-
-      const rtags = r.tags || [];
-      const matchCount = rtags.reduce((n, t) => n + (wantTagSet.has(t) ? 1 : 0), 0);
-      const genre = (r.genre || "").toLowerCase();
-      const genreHit = wantGenres.some((g) => g && genre.includes(g));
-      const hay = (r.artist + " " + r.title).toLowerCase();
-      const keywordHit = wantKeywords.some((k) => k && hay.includes(k));
-
-      // Relevance gate. If the AI understood the query, require a real match:
-      // enough tag overlap, OR a genre match, OR a named-artist match.
-      if (info) {
-        if (matchCount < minTagMatch && !genreHit && !keywordHit) return null;
-      } else {
-        if (!hay.includes(ql)) return null; // fallback: plain text only
-      }
-
-      // Score: reward covering more of the QUERY's vibe (coverage) and being
-      // focused on it rather than tagged with everything (focus).
-      const coverage = wantTags.length ? matchCount / wantTags.length : 0;   // 0..1
-      const focus = rtags.length ? matchCount / rtags.length : 0;            // 0..1
-      let s = matchCount * 2 + coverage * 4 + focus * 2;
-      if (genreHit) s += 3;
-      for (const k of wantKeywords) if (k && hay.includes(k)) s += 5;        // named artist = strongest
-      if (!info && hay.includes(ql)) s += 1;
-
-      return { release: r, shops: avail.length, min: Math.min(...avail.map(effPrice)), s };
-    }).filter(Boolean)
-      .sort((a, b) => b.s - a.s || a.release.title.localeCompare(b.release.title))
-      .slice(0, 15);
-
-    setVibeInfo(info);
+    setVibeInfo(tags.length ? { tags } : null);
     setVibeResults(ranked);
     setVibeBusy(false);
   };
