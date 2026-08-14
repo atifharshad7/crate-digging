@@ -1381,24 +1381,47 @@ export default function App() {
       if (!error && data && !data.fallback) info = data;
     } catch (e) { console.error("ai-search:", e); }
 
-    const wantTags = new Set((info && info.tags) || []);
+    const wantTags = (info && info.tags) || [];
+    const wantTagSet = new Set(wantTags);
     const wantGenres = (info && info.genres) || [];
     const wantKeywords = (info && info.keywords) || [];
     const ql = q.toLowerCase();
+    // How many query tags must a record hit to qualify (unless it matches a
+    // genre or a named artist). Prevents one incidental shared tag from showing.
+    const minTagMatch = Math.min(2, wantTags.length || 1);
 
     const ranked = catalog.releases.map((r) => {
       const avail = listings.filter((l) => l.releaseId === r.id && l.status === "available");
       if (!avail.length) return null;
-      let s = 0;
-      for (const t of (r.tags || [])) if (wantTags.has(t)) s += 2;               // tag overlap
+
+      const rtags = r.tags || [];
+      const matchCount = rtags.reduce((n, t) => n + (wantTagSet.has(t) ? 1 : 0), 0);
       const genre = (r.genre || "").toLowerCase();
-      for (const g of wantGenres) if (g && genre.includes(g)) s += 3;            // genre match
+      const genreHit = wantGenres.some((g) => g && genre.includes(g));
       const hay = (r.artist + " " + r.title).toLowerCase();
-      for (const k of wantKeywords) if (k && hay.includes(k)) s += 4;            // named artist/record
-      if (!info && hay.includes(ql)) s += 1;                                     // fallback: plain text
-      if (s <= 0) return null;
+      const keywordHit = wantKeywords.some((k) => k && hay.includes(k));
+
+      // Relevance gate. If the AI understood the query, require a real match:
+      // enough tag overlap, OR a genre match, OR a named-artist match.
+      if (info) {
+        if (matchCount < minTagMatch && !genreHit && !keywordHit) return null;
+      } else {
+        if (!hay.includes(ql)) return null; // fallback: plain text only
+      }
+
+      // Score: reward covering more of the QUERY's vibe (coverage) and being
+      // focused on it rather than tagged with everything (focus).
+      const coverage = wantTags.length ? matchCount / wantTags.length : 0;   // 0..1
+      const focus = rtags.length ? matchCount / rtags.length : 0;            // 0..1
+      let s = matchCount * 2 + coverage * 4 + focus * 2;
+      if (genreHit) s += 3;
+      for (const k of wantKeywords) if (k && hay.includes(k)) s += 5;        // named artist = strongest
+      if (!info && hay.includes(ql)) s += 1;
+
       return { release: r, shops: avail.length, min: Math.min(...avail.map(effPrice)), s };
-    }).filter(Boolean).sort((a, b) => b.s - a.s || a.release.title.localeCompare(b.release.title));
+    }).filter(Boolean)
+      .sort((a, b) => b.s - a.s || a.release.title.localeCompare(b.release.title))
+      .slice(0, 15);
 
     setVibeInfo(info);
     setVibeResults(ranked);
