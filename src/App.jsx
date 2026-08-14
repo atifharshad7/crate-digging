@@ -17,7 +17,7 @@ import { supabase } from "./supabaseClient";
 
 // map snake_case DB rows -> the camelCase shapes the UI already uses
 const mapShop = (s) => ({ id: s.id, name: s.name, hood: s.hood, address: s.address, lat: s.lat, lng: s.lng, discogs: s.discogs, mapsUrl: s.maps_url, holdHours: s.hold_hours == null ? 48 : s.hold_hours, vinylColor: s.vinyl_color || null, owner_id: s.owner_id });
-const mapRelease = (r) => ({ id: r.id, artist: r.artist, title: r.title, year: r.year, genre: r.genre, format: r.format, cover: r.cover || ["#38271F", "#C4632E"], image: r.image || undefined, youtubeUrl: r.youtube_url || undefined, tracklist: r.tracklist || undefined, discogsId: r.discogs_release_id || undefined });
+const mapRelease = (r) => ({ id: r.id, artist: r.artist, title: r.title, year: r.year, genre: r.genre, format: r.format, cover: r.cover || ["#38271F", "#C4632E"], image: r.image || undefined, youtubeUrl: r.youtube_url || undefined, tracklist: r.tracklist || undefined, discogsId: r.discogs_release_id || undefined, tags: r.tags || [] });
 const mapListing = (l) => ({ id: l.id, shopId: l.shop_id, releaseId: l.release_id, condition: l.condition, price: l.price, qty: l.qty, status: l.status, source: l.source, discount: l.discount || undefined, updated: l.updated_at, created: l.created_at });
 const mapReservation = (r) => ({ id: r.id, listingId: r.listing_id, releaseId: r.release_id, shopId: r.shop_id, buyerId: r.buyer_id, status: r.status, holdUntil: r.hold_until || undefined, created: r.created_at });
 const mapMessage = (m) => ({ id: m.id, shopId: m.shop_id, buyerId: m.buyer_id, sender: m.sender, senderName: m.sender_name || undefined, body: m.body, created: m.created_at });
@@ -935,6 +935,11 @@ export default function App() {
   const [oScreen, setOScreen] = useState({ name: "stock" });
   const [query, setQuery] = useState("");
   const [browse, setBrowse] = useState(null); // null | {type,value,label}
+  const [vibeMode, setVibeMode] = useState(false);
+  const [vibeQuery, setVibeQuery] = useState("");
+  const [vibeBusy, setVibeBusy] = useState(false);
+  const [vibeResults, setVibeResults] = useState(null); // null = not searched yet
+  const [vibeInfo, setVibeInfo] = useState(null); // { tags, genres, keywords }
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [shopQuery, setShopQuery] = useState("");
   const [shopGenre, setShopGenre] = useState("all");
@@ -1362,6 +1367,44 @@ export default function App() {
       .sort((a, b) => a.s - b.s || a.release.title.localeCompare(b.release.title));
   }, [query, catalog.releases, listings]);
 
+  // Vibe search: ask Claude (via the ai-search function) to turn a phrase into
+  // tags/genres/keywords, then rank records by how well their stored tags match.
+  // Falls back to a plain text match if the AI call is unavailable.
+  const runVibeSearch = async () => {
+    const q = vibeQuery.trim();
+    if (!q || vibeBusy) return;
+    setVibeBusy(true); setVibeResults(null); setVibeInfo(null);
+
+    let info = null;
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-search", { body: { q } });
+      if (!error && data && !data.fallback) info = data;
+    } catch (e) { console.error("ai-search:", e); }
+
+    const wantTags = new Set((info && info.tags) || []);
+    const wantGenres = (info && info.genres) || [];
+    const wantKeywords = (info && info.keywords) || [];
+    const ql = q.toLowerCase();
+
+    const ranked = catalog.releases.map((r) => {
+      const avail = listings.filter((l) => l.releaseId === r.id && l.status === "available");
+      if (!avail.length) return null;
+      let s = 0;
+      for (const t of (r.tags || [])) if (wantTags.has(t)) s += 2;               // tag overlap
+      const genre = (r.genre || "").toLowerCase();
+      for (const g of wantGenres) if (g && genre.includes(g)) s += 3;            // genre match
+      const hay = (r.artist + " " + r.title).toLowerCase();
+      for (const k of wantKeywords) if (k && hay.includes(k)) s += 4;            // named artist/record
+      if (!info && hay.includes(ql)) s += 1;                                     // fallback: plain text
+      if (s <= 0) return null;
+      return { release: r, shops: avail.length, min: Math.min(...avail.map(effPrice)), s };
+    }).filter(Boolean).sort((a, b) => b.s - a.s || a.release.title.localeCompare(b.release.title));
+
+    setVibeInfo(info);
+    setVibeResults(ranked);
+    setVibeBusy(false);
+  };
+
   const styleTag = (
     <style>{`
       .rille *{box-sizing:border-box}
@@ -1576,6 +1619,41 @@ export default function App() {
     }
     return (
       <div style={{ padding: "6px 18px 20px" }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <button className={vibeMode ? "btn-ghost" : "btn-rust"} style={{ flex: 1, padding: "8px 0", fontSize: 13 }} onClick={() => setVibeMode(false)}>Exact</button>
+          <button className={vibeMode ? "btn-rust" : "btn-ghost"} style={{ flex: 1, padding: "8px 0", fontSize: 13 }} onClick={() => setVibeMode(true)}>Search by vibe</button>
+        </div>
+
+        {vibeMode ? (
+          <>
+            <div className="row card" style={{ padding: "10px 12px", marginBottom: 6 }}>
+              <span style={{ color: "var(--muted)" }}>✧</span>
+              <input value={vibeQuery} onChange={(e) => setVibeQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") runVibeSearch(); }} placeholder="Describe a vibe…" autoFocus
+                style={{ border: "none", background: "transparent", outline: "none", width: "100%", fontSize: 15, color: "var(--ink)" }} />
+              <button className="btn-rust" style={{ padding: "6px 16px", fontSize: 13, opacity: vibeBusy ? 0.6 : 1 }} onClick={runVibeSearch}>{vibeBusy ? "…" : "Search"}</button>
+            </div>
+            <div className="k" style={{ margin: "0 2px 14px", fontSize: 12 }}>Try “dark hypnotic techno like early Berghain” or “something jazzy for a rainy Sunday”.</div>
+
+            {vibeBusy ? (
+              <div className="k" style={{ textAlign: "center", padding: "40px 20px" }}>Reading the vibe…</div>
+            ) : vibeResults == null ? null : vibeResults.length === 0 ? (
+              <div className="k" style={{ textAlign: "center", padding: "40px 20px" }}>Nothing in the crates matches that vibe yet.</div>
+            ) : (
+              <>
+                {vibeInfo && (vibeInfo.tags || []).length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                    <span className="k" style={{ fontSize: 12 }}>Matching:</span>
+                    {vibeInfo.tags.map((t) => (
+                      <span key={t} style={{ fontSize: 11, color: "var(--rust)", border: "0.5px solid var(--rust)", borderRadius: 999, padding: "1px 8px" }}>{t}</span>
+                    ))}
+                  </div>
+                )}
+                <div className="cd-grid">{vibeResults.map((x) => <RecordRow key={x.release.id} r={x.release} shops={x.shops} min={x.min} />)}</div>
+              </>
+            )}
+          </>
+        ) : (
+          <>
         <div className="row card" style={{ padding: "10px 12px", marginBottom: 14 }}>
           <span style={{ color: "var(--muted)" }}>⌕</span>
           <input value={query} onChange={(e) => { setQuery(e.target.value); if (browse) setBrowse(null); }} placeholder="Search artist or title" autoFocus
@@ -1597,6 +1675,8 @@ export default function App() {
           </>
         ) : (
           BrowseTiles()
+        )}
+          </>
         )}
         <div role="button" onClick={() => setCatalogOpen(true)}
           style={{ marginTop: 18, textAlign: "center", fontSize: 13, color: "var(--rust)", cursor: "pointer", padding: "10px" }}>
