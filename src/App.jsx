@@ -268,6 +268,19 @@ function AuthScreen({ authTab, setAuthTab, recentEmails, onLogin, onRegister, re
     if (e) setErr(e);
   };
 
+  // Demo accounts — must be created once in the app (see setup steps).
+  const DEMO = {
+    digger: { email: "digger@cratedigging.demo", password: "demodigger1" },
+    owner: { email: "shop@cratedigging.demo", password: "demoshop1" },
+  };
+  const demoLogin = async (who) => {
+    if (busy) return;
+    setErr(null); setBusy(true);
+    const e = await onLogin(DEMO[who].email, DEMO[who].password);
+    setBusy(false);
+    if (e) setErr("Demo account not set up yet. Create it first (see setup).");
+  };
+
   return (
     <div className="rille cd-auth" style={{ minHeight: "100dvh", background: "#000000", display: "flex", justifyContent: "center" }}>
       <div className="cd-auth-hero">
@@ -352,6 +365,19 @@ function AuthScreen({ authTab, setAuthTab, recentEmails, onLogin, onRegister, re
           <button className="btn-rust" style={{ marginTop: 20, opacity: busy ? 0.6 : 1 }} onClick={submit}>
             {busy ? "Please wait…" : isLogin ? "Log in" : "Create account"}
           </button>
+
+          {isLogin && (
+            <div className="card" style={{ marginTop: 22, padding: "14px 14px 16px" }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3 }}>Try the demo</div>
+              <div className="k" style={{ fontSize: 12, marginBottom: 12 }}>Jump in with a ready-made account — no sign-up.</div>
+              <button className="btn-ghost" style={{ width: "100%", justifyContent: "space-between", display: "flex", alignItems: "center", padding: "10px 13px", marginBottom: 8 }} onClick={() => demoLogin("digger")}>
+                <span>Explore as a digger</span><span style={{ color: "var(--rust)" }}>→</span>
+              </button>
+              <button className="btn-ghost" style={{ width: "100%", justifyContent: "space-between", display: "flex", alignItems: "center", padding: "10px 13px" }} onClick={() => demoLogin("owner")}>
+                <span>Explore as a shop owner</span><span style={{ color: "var(--rust)" }}>→</span>
+              </button>
+            </div>
+          )}
 
           {onAbout && (
             <div style={{ textAlign: "center", marginTop: 56, paddingBottom: 24 }}>
